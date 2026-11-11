@@ -1,6 +1,8 @@
 node_modules/
 dist/
 cdk.out/
+cdk-outputs.json
+bootstrap-outputs.json
 .env
 .env.*
 coverage/

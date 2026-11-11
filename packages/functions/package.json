@@ -1,0 +1,23 @@
+{
+  "name": "@staffing/functions",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/local/server.ts"
+  },
+  "dependencies": {
+    "@staffing/domain": "workspace:*",
+    "@staffing/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.146",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2"
+  }
+}

@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Default for every job: read the repo, nothing else. Only the deploy job asks for an OIDC token.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:2.5.3
+        ports: ['8000:8000']
+    env:
+      # Integration tests use this instead of starting their own container.
+      DYNAMODB_ENDPOINT: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  deploy:
+    needs: checks
+    # Pull requests never reach this job, so they never get AWS credentials.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Assume the deploy role (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ca-central-1
+
+      # The stack seeds the shift itself when it is first created (empty table),
+      # so CI needs no DynamoDB permissions.
+      - name: Deploy AppStack
+        run: pnpm run deploy
+
+      - name: Smoke test through CloudFront
+        run: |
+          OUT=packages/infra/cdk-outputs.json
+          SITE_URL=$(jq -r '.LiveStaffingApp.SiteUrl' "$OUT")
+          SHIFT_ID=$(jq -r '.LiveStaffingApp.ShiftId' "$OUT")
+          URL="$SITE_URL/api/shifts/$SHIFT_ID"
+          for i in 1 2 3 4 5 6; do
+            STATUS=$(curl -s -o body.json -w '%{http_code}' "$URL" || echo 000)
+            echo "Attempt $i: GET $URL -> $STATUS"
+            [ "$STATUS" = "200" ] && { cat body.json; echo; exit 0; }
+            sleep 10
+          done
+          cat body.json || true
+          exit 1

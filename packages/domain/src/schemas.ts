@@ -1,0 +1,65 @@
+import { z } from 'zod';
+import { ATTENDANCES, PARTICIPATIONS } from './statuses';
+import { ACTIONS } from './transitions';
+
+const isoInstant = z.string().datetime({ offset: true });
+
+function isIanaTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const ShiftSchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    location: z.string().min(1),
+    startsAt: isoInstant,
+    endsAt: isoInstant,
+    timezone: z.string().refine(isIanaTimeZone, 'must be an IANA timezone'),
+    required: z.number().int().positive(),
+    acceptedCount: z.number().int().nonnegative(),
+  })
+  .refine((s) => Date.parse(s.endsAt) > Date.parse(s.startsAt), {
+    message: 'endsAt must be after startsAt',
+    path: ['endsAt'],
+  });
+export type Shift = z.infer<typeof ShiftSchema>;
+
+export const WorkerSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  participation: z.enum(PARTICIPATIONS),
+  attendance: z.enum(ATTENDANCES),
+  invitedAt: isoInstant.nullable(),
+  respondedAt: isoInstant.nullable(),
+  checkedInAt: isoInstant.nullable(),
+  checkedOutAt: isoInstant.nullable(),
+  version: z.number().int().nonnegative(),
+});
+export type Worker = z.infer<typeof WorkerSchema>;
+
+export const SnapshotSchema = z.object({
+  shift: ShiftSchema,
+  workers: z.array(WorkerSchema),
+  seq: z.number().int().nonnegative(),
+});
+export type Snapshot = z.infer<typeof SnapshotSchema>;
+
+export const ActionRequestSchema = z
+  .object({
+    action: z.enum(ACTIONS),
+    expectedVersion: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type ActionRequest = z.infer<typeof ActionRequestSchema>;
+
+export const ApiErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+});
+export type ApiError = z.infer<typeof ApiErrorSchema>;

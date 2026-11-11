@@ -1,0 +1,27 @@
+{
+  "name": "@staffing/infra",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "synth": "cdk synth",
+    "deploy:app": "cdk deploy LiveStaffingApp --outputs-file cdk-outputs.json --require-approval never",
+    "deploy:hotswap": "cdk deploy LiveStaffingApp --hotswap --outputs-file cdk-outputs.json",
+    "destroy:app": "cdk destroy LiveStaffingApp --force",
+    "bootstrap:aws": "cdk bootstrap --app \"tsx bin/bootstrap.ts\" --profile staffing && cdk deploy --app \"tsx bin/bootstrap.ts\" --profile staffing --require-approval never --outputs-file bootstrap-outputs.json"
+  },
+  "dependencies": {
+    "@aws-sdk/util-dynamodb": "^3.716.0",
+    "@staffing/store": "workspace:*",
+    "aws-cdk-lib": "^2.173.2",
+    "constructs": "^10.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "aws-cdk": "^2.173.2",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.19.2"
+  }
+}

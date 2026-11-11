@@ -1,0 +1,27 @@
+{
+  "name": "@staffing/store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "reset": "tsx scripts/reset.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.716.0",
+    "@aws-sdk/client-dynamodb": "^3.716.0",
+    "@aws-sdk/credential-providers": "^3.716.0",
+    "@aws-sdk/lib-dynamodb": "^3.716.0",
+    "@staffing/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "testcontainers": "^10.16.0",
+    "tsx": "^4.19.2"
+  }
+}
