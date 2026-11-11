@@ -46,6 +46,15 @@ describe('GET /api/shifts/{shiftId}', () => {
       ]),
     );
     expect(Object.keys(body)).not.toContain('counts');
+    // Profile details come with the snapshot.
+    for (const seeded of SEED.workers) {
+      expect(body.workers.find((w) => w.id === seeded.id)).toMatchObject({
+        role: 'Worker',
+        phone: seeded.phone,
+        email: seeded.email,
+        address: seeded.address,
+      });
+    }
   });
 
   it('returns 404 with a readable message for an unknown shift', async () => {

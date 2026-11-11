@@ -1,13 +1,25 @@
 import type { Shift } from '@staffing/domain';
+// Photo by Guillaume DHALLUIN on Unsplash (Unsplash License); credited in the README.
+import restaurantPhoto from '../assets/shift-restaurant.webp';
 import { formatDate, formatTime, zoneName } from '../lib/time';
 import { Card } from './Card';
 import { ShiftIcon } from './icons';
 
-/** The shift like a flight card: the time range in large type, then where and when. */
+/**
+ * The shift like a flight card: a restaurant photo under the title, then the time range in large
+ * type and where and when, anchored at the bottom.
+ */
 export function ShiftDetails({ shift, className }: { shift: Shift; className?: string }) {
   const tz = shift.timezone;
   return (
-    <Card icon={<ShiftIcon />} title={shift.title} subtitle="Shift" className={className}>
+    <Card
+      icon={<ShiftIcon />}
+      title={shift.title}
+      subtitle="Shift"
+      className={className}
+      // Decorative: the card reads the same without it.
+      media={<img src={restaurantPhoto} alt="" decoding="async" />}
+    >
       <p data-testid="shift-time" className="text-2xl font-bold tracking-tight tabular-nums">
         <span className="whitespace-nowrap">{formatTime(shift.startsAt, tz)}</span>
         <span aria-hidden="true" className="mx-2 text-muted">

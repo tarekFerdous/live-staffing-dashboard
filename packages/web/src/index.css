@@ -50,6 +50,14 @@
   --toast-bg: #0f1115;
   --toast-fg: #ffffff;
   --toast-error-bg: #8e2f37;
+
+  /* Worker card status tints (Manager dashboard): a soft wash and a matching ring. */
+  --good-tint: rgb(31 157 85 / 0.1);
+  --good-ring: rgb(31 157 85 / 0.38);
+  --bad-tint: rgb(180 71 79 / 0.1);
+  --bad-ring: rgb(180 71 79 / 0.38);
+  --warn-tint: rgb(201 138 18 / 0.14);
+  --warn-ring: rgb(201 138 18 / 0.45);
 }
 
 /* Dark tokens appear twice: once for the system setting, once for the stored override. */
@@ -89,6 +97,12 @@
     --toast-bg: #f6f8fb;
     --toast-fg: #0c1424;
     --toast-error-bg: #f0b0b4;
+    --good-tint: rgb(74 222 128 / 0.1);
+    --good-ring: rgb(74 222 128 / 0.38);
+    --bad-tint: rgb(224 138 144 / 0.12);
+    --bad-ring: rgb(224 138 144 / 0.42);
+    --warn-tint: rgb(240 184 74 / 0.12);
+    --warn-ring: rgb(240 184 74 / 0.42);
   }
 }
 
@@ -127,6 +141,12 @@
   --toast-bg: #f6f8fb;
   --toast-fg: #0c1424;
   --toast-error-bg: #f0b0b4;
+  --good-tint: rgb(74 222 128 / 0.1);
+  --good-ring: rgb(74 222 128 / 0.38);
+  --bad-tint: rgb(224 138 144 / 0.12);
+  --bad-ring: rgb(224 138 144 / 0.42);
+  --warn-tint: rgb(240 184 74 / 0.12);
+  --warn-ring: rgb(240 184 74 / 0.42);
 }
 
 /* Exposed to Tailwind as bg-surface, text-muted, bg-primary, … */
@@ -192,6 +212,36 @@
       background: var(--card-solid);
     }
   }
+  /*
+   * A status tint on a card: an inset wash and a 1px ring, drawn as shadows so the change can
+   * fade (about 300 ms; none under reduced motion, see the end of this file).
+   */
+  .card[data-tone] {
+    box-shadow:
+      inset 0 0 0 100vmax transparent,
+      0 0 0 1px transparent,
+      var(--card-shadow);
+    transition: box-shadow 300ms ease;
+  }
+  .card[data-tone='good'] {
+    box-shadow:
+      inset 0 0 0 100vmax var(--good-tint),
+      0 0 0 1px var(--good-ring),
+      var(--card-shadow);
+  }
+  .card[data-tone='bad'] {
+    box-shadow:
+      inset 0 0 0 100vmax var(--bad-tint),
+      0 0 0 1px var(--bad-ring),
+      var(--card-shadow);
+  }
+  .card[data-tone='warn'] {
+    box-shadow:
+      inset 0 0 0 100vmax var(--warn-tint),
+      0 0 0 1px var(--warn-ring),
+      var(--card-shadow);
+  }
+
   /* A tile inside a card (big numbers, timestamps). */
   .tile {
     background: var(--card-inner);
@@ -208,6 +258,24 @@
     border-radius: 9999px;
     background: var(--primary);
     color: var(--primary-fg);
+  }
+
+  /* A card header over a photo: white in both themes, on a blurred, darkened top band. */
+  .icon-badge-on-media {
+    background: rgb(255 255 255 / 0.22);
+    color: #ffffff;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .text-shadow-on-media {
+    text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+  }
+  .media-scrim {
+    background: linear-gradient(to bottom, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.3) 55%, transparent);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
+    mask-image: linear-gradient(to bottom, #000 45%, transparent);
   }
 
   /* Monochrome pill buttons: black primary (white in dark), grey secondary. */

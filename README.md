@@ -9,7 +9,7 @@ AWS account.
 [`/worker`](https://auvf58yune.execute-api.ca-central-1.amazonaws.com/worker) (worker). Open both side by side.
 The URL is the stack's `SiteUrl` output; see [Site hosting](#site-hosting-temporary) for why it is an `execute-api` URL.
 
-![Manager dashboard: Staffing card with the filled-over-time chart, the Shift card, one card per worker with a progress tracker, and the live Activity timeline](docs/screenshots/manager-light-desktop.png)
+![Manager dashboard: Staffing card with the filled-over-time chart, the Shift card, one card per worker with a progress tracker, and the live Activity timeline as a rail on the right](docs/screenshots/manager-light-desktop.png)
 
 - [Pages and design](#pages-and-design)
 - [Quick start (local)](#quick-start-local)
@@ -31,19 +31,27 @@ The URL is the stack's `SiteUrl` output; see [Site hosting](#site-hosting-tempor
 | :----------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------: | :---------------------------------------------------------------------------: |
 | ![Manager dashboard at 400 px in dark mode](docs/screenshots/manager-dark-phone.png) | ![Worker page at 400 px in light mode](docs/screenshots/worker-light-phone.png) | ![Worker page at 400 px in dark mode](docs/screenshots/worker-dark-phone.png) |
 
-- **Manager** (`/manager`): a grid of cards, one column on phones and up to three on desktops.
-  - **Staffing:** the state in one sentence ("2 of 3 places filled. 1 checked in, nobody out yet."), big
-    numbers for Filled, Remaining, Checked in and Checked out, and a small **Filled over time** chart (plain
-    SVG) built from the accept and cancel events, with a dotted line from the latest point to the required
-    count. The chart has a text alternative ("Filled went from 0 to 2 between 3:01 p.m. and 3:05 p.m.").
-  - **Shift:** the time range in large type, then location, date and timezone, all in the shift's timezone.
+- **Manager** (`/manager`): the page uses the full browser width with a small gutter each side. A grid of
+  cards, one column on phones and up to three on desktops; on wide screens (1280 px and up) Activity is a
+  sticky 360 px rail on the right that stays in view while you scroll, with its list scrolling inside it.
+  Below that width Activity is the last, full-width card.
+  - **Staffing:** the state in one sentence ("2 of 3 places filled. 1 checked in, nobody out yet."), then big
+    numbers for Filled, Remaining, Checked in and Checked out. The numbers are selectable tiles (Filled by
+    default); the selected one is dark and the small **… over time** chart below (plain SVG) shows that count,
+    built from the event log. A dotted line runs from the latest point to the target (Filled up to the required
+    count, Remaining down to 0). Every whole number on the Y axis is labelled with a faint gridline. The chart has
+    a text alternative ("Checked in went from 0 to 2 between 3:01 p.m. and 3:05 p.m.").
+  - **Shift:** a restaurant photo under the title (white over a blurred, darkened band) that fills the card's
+    free height, then the time range in large type and location, date and timezone, all in the shift's timezone.
   - **One card per worker:** name • status, a sentence about the latest change ("Accepted at 3:04 p.m."), a
     parcel-style tracker (Invited → Accepted → Checked in → Checked out; a decline or cancel stops the bar in
     muted red and says so in words), participation, attendance and all four timestamps, and **Invite** as a
     full-width pill when allowed. Manager actions are never optimistic.
   - **Activity:** the last 50 changes, newest first. It loads the end of the event log once, then takes each
     live or caught-up event as it arrives; after an outage the catch-up fills the gap in order.
-- **Worker** (`/worker`): a name selector card and the worker's own card in the same style. Actions are
+- **Worker** (`/worker`): a "Who are you?" picker (a themed, keyboard-friendly dropdown, no UI library), then
+  the chosen worker's name in large type with their role, phone, email and address (made-up demo details from
+  the seed, restored by Reset demo), and the worker's own card in the same style. Actions are
   full-width pills: the step forward (Accept, Check in, Check out) is black, the others grey. Actions are
   optimistic: the expected row (predicted with the same domain rules the server runs) shows at once; a refusal
   puts the previous row back and shows the server's message.
@@ -51,8 +59,13 @@ The URL is the stack's `SiteUrl` output; see [Site hosting](#site-hosting-tempor
   24 px radius and a soft shadow instead of borders, Inter (bundled with the app, no request to Google), and
   monochrome actions. Colour is kept for state only: muted red for a stop or an error, a green dot for Live,
   amber while reconnecting. Five small hand-drawn SVG icons, no icon or chart library.
-- **Theme:** follows the system setting; the header's Theme menu overrides it (remembered in `localStorage`
-  when available). Colours are CSS variable tokens, defined once for light and twice for dark (system and
+- **Photo credit:** the Shift card's restaurant photo is by
+  [Guillaume DHALLUIN](https://unsplash.com/@lephotographelillois) on
+  [Unsplash](https://unsplash.com/photos/a-formal-dining-room-with-set-tables-N1IlIbAjfzs), used under the
+  [Unsplash License](https://unsplash.com/license). It is bundled with the app (a 131 KB webp), so it also loads
+  offline in local mode, and is decorative (empty alt text).
+- **Theme:** follows the system setting; the header's Theme pill overrides it, each click moving System → Light
+  → Dark → System (remembered in `localStorage` when available). Colours are CSS variable tokens, defined once for light and twice for dark (system and
   override).
 - **Accessibility:** every card is a region named by its title, the tracker and the chart are exposed as text,
   status is never shown by colour alone, every control has a visible focus ring, transitions switch off under

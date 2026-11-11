@@ -21,10 +21,19 @@ export function describeEvent(e: ShiftEventMessage): string {
     : `${e.row.name} ${VERB[e.type]}`;
 }
 
-/** The Activity card's shell, also used for its loading and error states. */
+/**
+ * The Activity card's shell, also used for its loading and error states. When the card's height
+ * is capped (the sticky rail on wide screens), the body shrinks and the list scrolls inside it.
+ */
 export function ActivityCard({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <Card icon={<ActivityIcon />} title="Activity" subtitle="Live timeline" className={className}>
+    <Card
+      icon={<ActivityIcon />}
+      title="Activity"
+      subtitle="Live timeline"
+      className={className}
+      bodyClassName="flex min-h-0 flex-col"
+    >
       {children}
     </Card>
   );
@@ -46,7 +55,13 @@ export function ActivityTimeline({
       {newestFirst.length === 0 ? (
         <p className="text-sm text-muted">No activity yet.</p>
       ) : (
-        <ol aria-label="Activity, newest first" className="divide-y divide-border" data-testid="timeline">
+        // Focusable so keyboard users can scroll it when it overflows.
+        <ol
+          aria-label="Activity, newest first"
+          tabIndex={0}
+          className="min-h-0 divide-y divide-border overflow-y-auto rounded-lg"
+          data-testid="timeline"
+        >
           {newestFirst.map((e) => {
             const actor = TRANSITIONS[e.type].actor;
             return (

@@ -1,6 +1,7 @@
 import type { Snapshot, Worker } from '@staffing/domain';
 import { QueryClient } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import { App, ROUTER_FUTURE } from '../App';
@@ -24,6 +25,10 @@ const worker = (id: string, name: string, extra: Partial<Worker> = {}): Worker =
   respondedAt: null,
   checkedInAt: null,
   checkedOutAt: null,
+  role: 'Worker',
+  phone: '+1 416-555-0142',
+  email: 'amara.okafor@example.com',
+  address: '88 Bathurst St, Toronto, ON M5V 2P5',
   version: 0,
   ...extra,
 });
@@ -61,6 +66,15 @@ export const trackerOf = (name: string) => within(workerCard(name)).getByTestId(
 /** The value shown next to a label in a card's details (`<dt>label</dt><dd>value</dd>`). */
 export const detail = (scope: HTMLElement, label: string) =>
   within(scope).getByText(label, { selector: 'dt' }).nextElementSibling as HTMLElement;
+
+/** The Worker page's "Who are you?" picker. */
+export const workerPicker = () => screen.findByRole('combobox', { name: 'Who are you?' });
+
+/** Chooses a worker on the Worker page: open the picker, click the name. */
+export async function pickWorker(name: string) {
+  await userEvent.click(await workerPicker());
+  await userEvent.click(screen.getByRole('option', { name }));
+}
 
 export const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

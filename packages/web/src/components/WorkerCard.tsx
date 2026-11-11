@@ -1,7 +1,7 @@
 import { ATTENDANCE_LABELS, PARTICIPATION_LABELS, type Worker } from '@staffing/domain';
 import type { ReactNode } from 'react';
 import { formatTime } from '../lib/time';
-import { trackerFor, workerSentence } from '../lib/tracker';
+import { toneFor, trackerFor, workerSentence } from '../lib/tracker';
 import { Card } from './Card';
 import { WorkerIcon } from './icons';
 import { Tracker } from './Tracker';
@@ -18,6 +18,8 @@ export function WorkerCard({
   /** Test ids for the participation and attendance values (the worker page's own card). */
   testIdPrefix,
   headingLevel,
+  /** Tint the card by status (the Manager dashboard does; the worker's own page doesn't). */
+  tinted = false,
 }: {
   worker: Worker;
   timeZone: string;
@@ -25,6 +27,7 @@ export function WorkerCard({
   title?: string;
   testIdPrefix?: string;
   headingLevel?: 2 | 3;
+  tinted?: boolean;
 }) {
   const time = (iso: string | null) => (iso ? formatTime(iso, timeZone) : '—');
   const details: [string, ReactNode, string?][] = [
@@ -43,6 +46,7 @@ export function WorkerCard({
       summary={workerSentence(w, timeZone)}
       footer={footer}
       headingLevel={headingLevel}
+      tone={tinted ? toneFor(w) : undefined}
     >
       <Tracker worker={w} />
       <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">

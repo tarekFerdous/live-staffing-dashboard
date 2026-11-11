@@ -11,6 +11,7 @@ import {
   findWorkerCard,
   trackerOf,
   workerCard,
+  pickWorker,
 } from '../test/render';
 import { WORKER_STORAGE_KEY } from './WorkerPage';
 
@@ -105,9 +106,6 @@ describe('manager: invite', () => {
 });
 
 describe('worker: accept, decline, cancel', () => {
-  const pick = async (name: string) =>
-    userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
-
   it('shows only the buttons the transition table allows', async () => {
     fakeApi(
       makeSnapshot([
@@ -123,18 +121,18 @@ describe('worker: accept, decline, cancel', () => {
     const buttons = () =>
       screen.queryAllByRole('button', { name: /^(Accept|Decline|Cancel) / }).map((b) => b.textContent);
 
-    await pick('Ana');
+    await pickWorker('Ana');
     expect(buttons()).toEqual([]);
     expect(screen.getByText("You haven't been invited to this shift yet.")).toBeInTheDocument();
-    await pick('Ben');
+    await pickWorker('Ben');
     expect(buttons()).toEqual(['Accept', 'Decline']);
-    await pick('Cy');
+    await pickWorker('Cy');
     expect(buttons()).toEqual(['Cancel']);
-    await pick('Di');
+    await pickWorker('Di');
     expect(buttons()).toEqual(['Accept']);
-    await pick('Ed');
+    await pickWorker('Ed');
     expect(buttons()).toEqual([]);
-    await pick('Flo');
+    await pickWorker('Flo');
     expect(buttons()).toEqual([]); // cancel disappears once checked in
   });
 
@@ -143,7 +141,7 @@ describe('worker: accept, decline, cancel', () => {
       makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited', version: 1 })]),
     );
     renderApp('/worker');
-    await pick('Amara Okafor');
+    await pickWorker('Amara Okafor');
 
     await userEvent.click(screen.getByRole('button', { name: 'Accept Amara Okafor' }));
     await waitFor(() => expect(screen.getByTestId('my-participation')).toHaveTextContent('Accepted'));
@@ -164,7 +162,7 @@ describe('worker: accept, decline, cancel', () => {
   it('decline moves to Declined and removes the buttons', async () => {
     fakeApi(makeSnapshot([worker('liam', 'Liam Chen', { participation: 'invited' })]));
     renderApp('/worker');
-    await pick('Liam Chen');
+    await pickWorker('Liam Chen');
     await userEvent.click(screen.getByRole('button', { name: 'Decline Liam Chen' }));
     await waitFor(() => expect(screen.getByTestId('my-participation')).toHaveTextContent('Declined'));
     expect(screen.queryByRole('button', { name: /Liam Chen/ })).toBeNull();
@@ -178,7 +176,7 @@ describe('worker: accept, decline, cancel', () => {
       ),
     );
     renderApp('/worker');
-    await pick('Ben');
+    await pickWorker('Ben');
     await userEvent.click(screen.getByRole('button', { name: 'Accept Ben' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No places left');
     expect(screen.getByTestId('my-participation')).toHaveTextContent('Invited');
@@ -205,8 +203,6 @@ describe('worker: accept, decline, cancel', () => {
 });
 
 describe('worker: check in and check out', () => {
-  const pick = async (name: string) =>
-    userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
   const buttons = () => screen.queryAllByRole('button', { name: /Amara Okafor$/ }).map((b) => b.textContent);
 
   it('Accepted → Check in (Cancel still offered) → Check out (Cancel gone) → final, with times shown', async () => {
@@ -214,7 +210,7 @@ describe('worker: check in and check out', () => {
       makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]),
     );
     renderApp('/worker');
-    await pick('Amara Okafor');
+    await pickWorker('Amara Okafor');
     expect(buttons()).toEqual(['Check in', 'Cancel']);
 
     await userEvent.click(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
@@ -237,7 +233,7 @@ describe('worker: check in and check out', () => {
   it('Check in is not offered before accepting', async () => {
     fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited' })]));
     renderApp('/worker');
-    await pick('Amara Okafor');
+    await pickWorker('Amara Okafor');
     expect(buttons()).toEqual(['Accept', 'Decline']);
   });
 
@@ -246,7 +242,7 @@ describe('worker: check in and check out', () => {
       makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]),
     );
     renderApp('/worker');
-    await pick('Amara Okafor');
+    await pickWorker('Amara Okafor');
     const release = api.holdPosts();
     await userEvent.dblClick(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
     release();
@@ -265,10 +261,10 @@ describe('worker: check in and check out', () => {
       ),
     );
     renderApp('/worker');
-    await pick('Amara Okafor');
+    await pickWorker('Amara Okafor');
     await userEvent.click(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
     await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
-    await pick('Liam Chen');
+    await pickWorker('Liam Chen');
     await userEvent.click(screen.getByRole('button', { name: 'Check in Liam Chen' }));
     await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
     await userEvent.click(screen.getByRole('button', { name: 'Check out Liam Chen' }));

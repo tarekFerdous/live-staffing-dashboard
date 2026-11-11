@@ -12,6 +12,7 @@ beforeAll(() => {
   mkdirSync(join(root, 'assets'));
   writeFileSync(join(root, 'assets', 'index-abc123.js'), 'console.log(1)');
   writeFileSync(join(root, 'favicon.svg'), '<svg/>');
+  writeFileSync(join(root, 'assets', 'shift-restaurant-abc123.webp'), Buffer.from([0x52, 0x49, 0x46, 0x46]));
   handler = makeSiteHandler(root);
 });
 
@@ -38,6 +39,13 @@ describe('site handler', () => {
     expect(r.headers?.['cache-control']).toContain('immutable');
     expect(text(r)).toBe('console.log(1)');
     expect((await get('/favicon.svg')).headers?.['cache-control']).toBe('no-cache');
+  });
+
+  it('serves the Shift card photo as image/webp, byte for byte', async () => {
+    const r = await get('/assets/shift-restaurant-abc123.webp');
+    expect(r.statusCode).toBe(200);
+    expect(r.headers?.['content-type']).toBe('image/webp');
+    expect([...Buffer.from(r.body, 'base64')]).toEqual([0x52, 0x49, 0x46, 0x46]);
   });
 
   it('answers 404 for missing files and unknown API paths, never the page', async () => {

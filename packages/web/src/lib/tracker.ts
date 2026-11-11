@@ -40,6 +40,31 @@ export function trackerFor(w: WorkerState): Tracker {
   }
 }
 
+/**
+ * How far the bar fills, in percent: to the centre of the current step's label (steps 1–3:
+ * 12.5, 37.5, 62.5), the whole bar once checked out, nothing before an invite. A stopped tracker
+ * ends at the step it stopped at.
+ */
+export function fillPercent(t: Pick<Tracker, 'step'>): number {
+  if (t.step === 0) return 0;
+  if (t.step === TRACKER_STEPS.length) return 100;
+  return ((t.step - 0.5) / TRACKER_STEPS.length) * 100;
+}
+
+/** A worker card's status tint on the Manager dashboard. */
+export type Tone = 'none' | 'good' | 'bad' | 'warn';
+
+/**
+ * Checked in → yellow (on site now, over green); Declined or Cancelled → red; Accepted and not yet
+ * in → green; everything else (Not invited, Invited, Checked out) keeps the default look.
+ */
+export function toneFor(w: WorkerState): Tone {
+  if (w.attendance === 'checked_in') return 'warn';
+  if (w.participation === 'declined' || w.participation === 'cancelled') return 'bad';
+  if (w.participation === 'accepted' && w.attendance === 'not_started') return 'good';
+  return 'none';
+}
+
 /** One sentence about the latest thing that happened, in the shift's timezone: "Accepted at 3:04 p.m." */
 export function workerSentence(w: Worker, timeZone: string): string {
   // "… 3:04 p.m." already ends in a full stop.

@@ -3,7 +3,7 @@ import { META_SK, shiftPk, workerSk } from './keys';
 
 export type SeedData = {
   shift: Omit<Shift, 'acceptedCount'>;
-  workers: Pick<Worker, 'id' | 'name'>[];
+  workers: Pick<Worker, 'id' | 'name' | 'role' | 'phone' | 'email' | 'address'>[];
 };
 
 export const SEED_SHIFT_ID = 'harbourfront-gala';
@@ -19,10 +19,32 @@ export const SEED: SeedData = {
     timezone: 'America/Toronto',
     required: 3,
   },
+  // Made-up demo details (555 numbers, example.com addresses): no real person's information.
   workers: [
-    { id: 'amara', name: 'Amara Okafor' },
-    { id: 'liam', name: 'Liam Chen' },
-    { id: 'sofia', name: 'Sofia Rossi' },
+    {
+      id: 'amara',
+      name: 'Amara Okafor',
+      role: 'Worker',
+      phone: '+1 416-555-0142',
+      email: 'amara.okafor@example.com',
+      address: '88 Bathurst St, Toronto, ON M5V 2P5',
+    },
+    {
+      id: 'liam',
+      name: 'Liam Chen',
+      role: 'Worker',
+      phone: '+1 647-555-0187',
+      email: 'liam.chen@example.com',
+      address: '412 Spadina Ave, Toronto, ON M5T 2G7',
+    },
+    {
+      id: 'sofia',
+      name: 'Sofia Rossi',
+      role: 'Worker',
+      phone: '+1 416-555-0119',
+      email: 'sofia.rossi@example.com',
+      address: '1020 College St, Toronto, ON M6H 1A6',
+    },
   ],
 };
 
@@ -58,6 +80,10 @@ export function seedWorkers(seed: SeedData): Record<string, unknown>[] {
       type: 'worker',
       id: w.id,
       name: w.name,
+      role: w.role,
+      phone: w.phone,
+      email: w.email,
+      address: w.address,
       participation: 'uninvited',
       attendance: 'not_started',
       version: 0,

@@ -33,6 +33,11 @@ export type Shift = z.infer<typeof ShiftSchema>;
 export const WorkerSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  // Profile details (made-up demo data). Defaulted so rows stored before they existed still parse.
+  role: z.string().default(''),
+  phone: z.string().default(''),
+  email: z.string().default(''),
+  address: z.string().default(''),
   participation: z.enum(PARTICIPATIONS),
   attendance: z.enum(ATTENDANCES),
   invitedAt: isoInstant.nullable(),

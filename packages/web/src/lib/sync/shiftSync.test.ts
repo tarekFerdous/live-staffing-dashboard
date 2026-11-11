@@ -28,6 +28,10 @@ const worker = (id: string): Worker => ({
   respondedAt: null,
   checkedInAt: null,
   checkedOutAt: null,
+  role: 'Worker',
+  phone: '+1 416-555-0142',
+  email: 'amara.okafor@example.com',
+  address: '88 Bathurst St, Toronto, ON M5V 2P5',
   version: 0,
 });
 

@@ -6,28 +6,27 @@ import {
   type ThemePreference,
 } from '../lib/theme';
 
-/** System / Light / Dark. The choice is remembered when storage allows it. */
+const NEXT: Record<ThemePreference, ThemePreference> = { system: 'light', light: 'dark', dark: 'system' };
+const LABEL: Record<ThemePreference, string> = { system: 'System', light: 'Light', dark: 'Dark' };
+
+/** One pill: each click moves System → Light → Dark → System. Remembered when storage allows it. */
 export function ThemeToggle() {
   const [pref, setPref] = useState<ThemePreference>(readThemePreference);
   // index.html applies the stored theme before the first paint; this keeps them in step.
   useEffect(() => applyThemePreference(pref), [pref]);
+  const next = NEXT[pref];
 
   return (
-    <label className="flex items-center gap-1.5 rounded-full bg-secondary py-1 pr-1 pl-3 text-xs font-semibold">
-      <span>Theme</span>
-      <select
-        value={pref}
-        onChange={(e) => {
-          const next = e.target.value as ThemePreference;
-          setPref(next);
-          saveThemePreference(next);
-        }}
-        className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-fg"
-      >
-        <option value="system">System</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
-    </label>
+    <button
+      type="button"
+      aria-label={`Theme: ${LABEL[pref]}. Switch to ${LABEL[next]}.`}
+      onClick={() => {
+        setPref(next);
+        saveThemePreference(next);
+      }}
+      className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold transition-colors hover:bg-[var(--secondary-hover)]"
+    >
+      Theme <span aria-hidden="true">·</span> <span className="font-medium">{LABEL[pref]}</span>
+    </button>
   );
 }

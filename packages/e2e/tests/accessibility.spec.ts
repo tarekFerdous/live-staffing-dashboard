@@ -10,6 +10,7 @@ import {
   test,
   tracker,
   WORKERS,
+  workerPicker,
 } from '../lib/app';
 
 /** WCAG 2.1 A/AA rules checked by axe-core (contrast included). */
@@ -46,6 +47,13 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect(tracker(managerWorker(manager, WORKERS.sofia))).toHaveText('Step 2 of 4: Declined');
       await openWorker(workerPage, WORKERS.amara);
 
+      // The worker picker's menu, open.
+      await workerPicker(workerPage).click();
+      await expect(workerPage.getByRole('listbox')).toBeVisible();
+      await expectNoViolations(workerPage);
+      await workerPage.keyboard.press('Escape');
+      await expect(workerPage.getByRole('listbox')).toBeHidden();
+
       for (const page of [manager, workerPage]) {
         await expectNoViolations(page);
         await page.setViewportSize({ width: 400, height: 800 });
@@ -76,7 +84,11 @@ test('every card is a labelled region and every control is reachable by keyboard
       if (!el || el === document.body) return null;
       // Focus must be visible: the focus ring is an outline.
       if (getComputedStyle(el).outlineStyle === 'none') return `invisible:${el.outerHTML.slice(0, 80)}`;
-      return el.outerHTML.slice(0, 120);
+      // Count elements, not markup: look-alike controls (unselected tiles) share their HTML.
+      const w = window as unknown as { __ids?: WeakMap<Element, number>; __n?: number };
+      w.__ids ??= new WeakMap();
+      if (!w.__ids.has(el)) w.__ids.set(el, (w.__n = (w.__n ?? 0) + 1));
+      return `#${w.__ids.get(el)} ${el.outerHTML.slice(0, 80)}`;
     });
     if (id) reached.add(id);
   }

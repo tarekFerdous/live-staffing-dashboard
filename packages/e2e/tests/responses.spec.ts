@@ -3,6 +3,7 @@ import {
   expect,
   expectCounts,
   expectManagerStatus,
+  expectTone,
   expectWorkerStatus,
   openManager,
   openWorker,
@@ -27,6 +28,7 @@ test('decline, re-invite, accept, cancel and accept again', async ({ manager, wo
     workerPage.getByText('You declined this shift. The manager can invite you again.'),
   ).toBeVisible();
   await expectManagerStatus(manager, LIAM, 'Declined');
+  await expectTone(manager, LIAM, 'bad');
   await expectCounts(manager, { filled: 0 });
 
   await actionButton(manager, 'Invite', LIAM).click();
@@ -34,12 +36,14 @@ test('decline, re-invite, accept, cancel and accept again', async ({ manager, wo
 
   await actionButton(workerPage, 'Accept', LIAM).click();
   await expectManagerStatus(manager, LIAM, 'Accepted');
+  await expectTone(manager, LIAM, 'good');
   await expectCounts(manager, { filled: 1 });
 
   // Cancel frees the place.
   await actionButton(workerPage, 'Cancel', LIAM).click();
   await expectWorkerStatus(workerPage, 'Cancelled');
   await expectManagerStatus(manager, LIAM, 'Cancelled');
+  await expectTone(manager, LIAM, 'bad');
   await expectCounts(manager, { filled: 0 });
 
   // A cancelled worker may accept again while there is room.

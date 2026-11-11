@@ -18,20 +18,49 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const themeSelect = () => screen.getByRole('combobox', { name: 'Theme' });
+const themeButton = () => screen.getByRole('button', { name: /^Theme:/ });
 
 describe('theme', () => {
   it('follows the system setting until the user picks one', async () => {
     renderApp('/manager');
     await findWorkerCard('Amara Okafor');
-    expect(themeSelect()).toHaveValue('system');
+    expect(themeButton()).toHaveAccessibleName('Theme: System. Switch to Light.');
+    expect(themeButton()).toHaveTextContent('Theme · System');
     expect(html.dataset.theme).toBeUndefined();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('cycles System → Light → Dark → System, applying and saving each', async () => {
+    renderApp('/manager');
+    await findWorkerCard('Amara Okafor');
+    const steps = [
+      ['light', 'Theme: Light. Switch to Dark.'],
+      ['dark', 'Theme: Dark. Switch to System.'],
+      ['system', 'Theme: System. Switch to Light.'],
+    ] as const;
+    for (const [pref, name] of steps) {
+      await userEvent.click(themeButton());
+      expect(themeButton()).toHaveAccessibleName(name);
+      expect(html.dataset.theme).toBe(pref === 'system' ? undefined : pref);
+      expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe(pref);
+    }
+  });
+
+  it('works from the keyboard', async () => {
+    renderApp('/manager');
+    await findWorkerCard('Amara Okafor');
+    themeButton().focus();
+    await userEvent.keyboard('{Enter}');
+    expect(html.dataset.theme).toBe('light');
+    await userEvent.keyboard(' ');
+    expect(html.dataset.theme).toBe('dark');
   });
 
   it('overrides the system setting and survives a refresh', async () => {
     const first = renderApp('/manager');
     await findWorkerCard('Amara Okafor');
-    await userEvent.selectOptions(themeSelect(), 'dark');
+    await userEvent.click(themeButton());
+    await userEvent.click(themeButton());
     expect(html.dataset.theme).toBe('dark');
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
 
@@ -39,10 +68,10 @@ describe('theme', () => {
     delete html.dataset.theme; // a fresh page load starts without the attribute
     renderApp('/manager');
     await findWorkerCard('Amara Okafor');
-    expect(themeSelect()).toHaveValue('dark');
+    expect(themeButton()).toHaveAccessibleName('Theme: Dark. Switch to System.');
     expect(html.dataset.theme).toBe('dark');
 
-    await userEvent.selectOptions(themeSelect(), 'system');
+    await userEvent.click(themeButton());
     expect(html.dataset.theme).toBeUndefined();
   });
 
@@ -55,8 +84,8 @@ describe('theme', () => {
     });
     renderApp('/manager');
     await findWorkerCard('Amara Okafor');
-    expect(themeSelect()).toHaveValue('system');
-    await userEvent.selectOptions(themeSelect(), 'light');
+    expect(themeButton()).toHaveAccessibleName('Theme: System. Switch to Light.');
+    await userEvent.click(themeButton());
     expect(html.dataset.theme).toBe('light');
   });
 });
@@ -71,7 +100,7 @@ describe('accessibility', () => {
       ...screen.getAllByRole('link'),
       ...screen.getAllByRole('button'),
       ...screen.getAllByRole('switch'),
-      ...screen.getAllByRole('combobox'),
+      ...screen.queryAllByRole('combobox'),
     ];
     for (const c of controls) expect(c).toHaveAccessibleName();
 

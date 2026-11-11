@@ -55,6 +55,9 @@ export function LiveStatusBar() {
 
 export const PAUSED_NOTICE_ID = 'live-paused-notice';
 
+/** Full-width side gutters, shared by the header, the paused notice and the main content so their edges line up. */
+export const GUTTER = 'px-4 sm:px-6 lg:px-8';
+
 /** Why actions are off, shown once under the header instead of on every row. */
 export function LivePausedNotice() {
   const live = useLive();
@@ -64,7 +67,7 @@ export function LivePausedNotice() {
       ? "You're offline. Actions are turned off until your connection is back."
       : 'Live updates are paused while we reconnect. Actions are turned off so nothing is sent from an out-of-date screen.';
   return (
-    <div id={PAUSED_NOTICE_ID} className="mx-auto mt-2 max-w-5xl px-4">
+    <div id={PAUSED_NOTICE_ID} className={`mt-2 ${GUTTER}`}>
       <p className="rounded-2xl bg-warn-bg px-4 py-2 text-center text-sm font-medium text-warn-fg">{text}</p>
     </div>
   );

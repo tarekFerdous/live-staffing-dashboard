@@ -42,6 +42,17 @@ describe('design tokens', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*transition-duration: 0s/);
     expect(css).toMatch(/@supports not \(\(backdrop-filter[\s\S]*var\(--card-solid\)/);
   });
+
+  it('fades a card status tint in about 300 ms (which reduced motion turns off)', () => {
+    expect(css).toMatch(/\.card\[data-tone\] \{[^}]*transition: box-shadow 300ms/);
+    for (const tone of ['good', 'bad', 'warn']) {
+      expect(css).toMatch(
+        new RegExp(
+          `\\.card\\[data-tone='${tone}'\\] \\{[^}]*var\\(--${tone}-tint\\)[^}]*var\\(--${tone}-ring\\)`,
+        ),
+      );
+    }
+  });
 });
 
 describe('font', () => {

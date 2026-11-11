@@ -86,6 +86,10 @@ describe('GET /api/shifts/{shiftId}/events', () => {
       respondedAt: null,
       checkedInAt: null,
       checkedOutAt: null,
+      role: 'Worker',
+      phone: '+1 416-555-0142',
+      email: 'amara.okafor@example.com',
+      address: '88 Bathurst St, Toronto, ON M5V 2P5',
       version: 1,
     };
     const meta = {

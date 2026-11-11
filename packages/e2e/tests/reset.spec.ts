@@ -5,11 +5,13 @@ import {
   expect,
   expectCounts,
   expectManagerStatus,
+  expectWorkerProfile,
   expectWorkerStatus,
   openManager,
   openWorker,
   test,
   timelineEntries,
+  waitForLive,
   WORKERS,
 } from '../lib/app';
 
@@ -44,6 +46,7 @@ test('a reset from the manager modal puts both open pages back to the seed witho
 }) => {
   await openManager(manager);
   await openWorker(workerPage, AMARA);
+  await expectWorkerProfile(workerPage, AMARA);
   await makeChanges(manager, workerPage);
 
   await resetButton(manager).click();
@@ -54,6 +57,11 @@ test('a reset from the manager modal puts both open pages back to the seed witho
   await expect(dialog(manager)).toBeHidden();
   await expect(manager.getByText('Demo reset')).toBeVisible();
   await expectSeeded(manager, workerPage);
+  // The details come back with the seed, live and after a reload.
+  await expectWorkerProfile(workerPage, AMARA);
+  await workerPage.reload();
+  await expectWorkerProfile(workerPage, AMARA);
+  await waitForLive(workerPage);
 
   // Both pages keep working live from the fresh start.
   await actionButton(manager, 'Invite', AMARA).click();

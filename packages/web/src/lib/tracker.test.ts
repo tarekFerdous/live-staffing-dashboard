@@ -1,7 +1,14 @@
-import { ATTENDANCES, PARTICIPATIONS, type Attendance, type Participation } from '@staffing/domain';
+import {
+  ATTENDANCES,
+  PARTICIPATIONS,
+  TRANSITIONS,
+  type Attendance,
+  type Participation,
+  type WorkerState,
+} from '@staffing/domain';
 import { describe, expect, it } from 'vitest';
 import { worker } from '../test/render';
-import { trackerFor, workerSentence } from './tracker';
+import { fillPercent, toneFor, trackerFor, workerSentence, type Tone } from './tracker';
 
 const TZ = 'America/Toronto';
 
@@ -45,6 +52,57 @@ describe('trackerFor', () => {
     expect(trackerFor({ participation: 'uninvited', attendance: 'not_started' })).toMatchObject({
       step: 0,
       label: 'Not invited',
+    });
+  });
+});
+
+describe('fillPercent', () => {
+  it('ends at the centre of the current step label, and is full once checked out', () => {
+    const fill = (participation: Participation, attendance: Attendance = 'not_started') =>
+      fillPercent(trackerFor({ participation, attendance }));
+    expect(fill('uninvited')).toBe(0);
+    expect(fill('invited')).toBe(12.5);
+    expect(fill('accepted')).toBe(37.5);
+    expect(fill('accepted', 'checked_in')).toBe(62.5);
+    expect(fill('accepted', 'checked_out')).toBe(100);
+  });
+
+  it('ends a stopped tracker at the step it stopped at', () => {
+    expect(fillPercent(trackerFor({ participation: 'declined', attendance: 'not_started' }))).toBe(37.5);
+    expect(fillPercent(trackerFor({ participation: 'cancelled', attendance: 'not_started' }))).toBe(37.5);
+  });
+});
+
+describe('toneFor', () => {
+  // Every participation × attendance combination, reachable or not.
+  const expected: Record<Participation, Record<Attendance, Tone>> = {
+    uninvited: { not_started: 'none', checked_in: 'warn', checked_out: 'none' },
+    invited: { not_started: 'none', checked_in: 'warn', checked_out: 'none' },
+    accepted: { not_started: 'good', checked_in: 'warn', checked_out: 'none' },
+    declined: { not_started: 'bad', checked_in: 'warn', checked_out: 'bad' },
+    cancelled: { not_started: 'bad', checked_in: 'warn', checked_out: 'bad' },
+  };
+  for (const participation of PARTICIPATIONS) {
+    for (const attendance of ATTENDANCES) {
+      it(`${participation} + ${attendance} → ${expected[participation][attendance]}`, () => {
+        expect(toneFor({ participation, attendance })).toBe(expected[participation][attendance]);
+      });
+    }
+  }
+
+  it('gives every state the transition table can reach the tone the PRD asks for', () => {
+    const reachable = new Map<string, WorkerState>();
+    for (const t of Object.values(TRANSITIONS)) {
+      for (const st of [...t.from, t.to]) reachable.set(`${st.participation}/${st.attendance}`, st);
+    }
+    expect(Object.fromEntries([...reachable].map(([k, st]) => [k, toneFor(st)]))).toEqual({
+      'uninvited/not_started': 'none',
+      'invited/not_started': 'none',
+      'accepted/not_started': 'good',
+      'declined/not_started': 'bad',
+      'cancelled/not_started': 'bad',
+      'accepted/checked_in': 'warn',
+      'accepted/checked_out': 'none',
     });
   });
 });

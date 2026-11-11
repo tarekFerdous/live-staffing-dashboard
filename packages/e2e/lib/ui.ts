@@ -61,6 +61,15 @@ export async function expectManagerStatus(
   await expect(cardDetail(card, 'Attendance')).toHaveText(attendance);
 }
 
+/** A manager worker card's status tint: none (default), good (green), bad (red), warn (yellow). */
+export async function expectTone(
+  page: Page,
+  name: WorkerName,
+  tone: 'none' | 'good' | 'bad' | 'warn',
+): Promise<void> {
+  await expect(managerWorker(page, name)).toHaveAttribute('data-tone', tone);
+}
+
 export function filledCount(page: Page): Locator {
   return page.getByTestId('count-filled');
 }
@@ -75,6 +84,20 @@ export async function expectCounts(
   await expect(page.getByTestId('count-checked-out')).toHaveText(String(counts.checkedOut ?? 0));
 }
 
+export type StaffingTile = 'Filled' | 'Remaining' | 'Checked in' | 'Checked out';
+
+/** One of the Staffing card's selectable number tiles. */
+export function staffingTile(page: Page, name: StaffingTile): Locator {
+  return page
+    .getByRole('group', { name: 'Shift summary' })
+    .getByRole('button', { name: new RegExp(`^${name}\\b`) });
+}
+
+/** The Staffing chart's caption (its text alternative), e.g. "Checked in went from 0 to 1 at 3:05 p.m." */
+export function chartCaption(page: Page): Locator {
+  return page.getByRole('region', { name: 'Staffing', exact: true }).getByTestId('chart-text');
+}
+
 /** Timeline entries, newest first. */
 export function timelineEntries(page: Page): Locator {
   return page.getByRole('list', { name: 'Activity, newest first' }).getByRole('listitem');
@@ -85,8 +108,57 @@ export function timelineEntries(page: Page): Locator {
 export async function openWorker(page: Page, name: WorkerName): Promise<void> {
   await page.goto('/worker');
   await expect(page.getByRole('heading', { name: 'My shift' })).toBeVisible();
-  await page.getByLabel('Who are you?').selectOption({ label: name });
+  await pickWorker(page, name);
   await waitForLive(page);
+}
+
+/** The Worker page's themed "Who are you?" picker (a select-only combobox). */
+export function workerPicker(page: Page): Locator {
+  return page.getByRole('combobox', { name: 'Who are you?' });
+}
+
+/** Chooses a worker in the picker: open it, click the name. */
+export async function pickWorker(page: Page, name: WorkerName): Promise<void> {
+  await workerPicker(page).click();
+  await page.getByRole('option', { name, exact: true }).click();
+  await expect(workerPicker(page)).toHaveText(name);
+}
+
+/** The seeded (made-up) profile details shown under the picker. */
+export const PROFILES: Record<WorkerName, { role: string; phone: string; email: string; address: string }> = {
+  'Amara Okafor': {
+    role: 'Worker',
+    phone: '+1 416-555-0142',
+    email: 'amara.okafor@example.com',
+    address: '88 Bathurst St, Toronto, ON M5V 2P5',
+  },
+  'Liam Chen': {
+    role: 'Worker',
+    phone: '+1 647-555-0187',
+    email: 'liam.chen@example.com',
+    address: '412 Spadina Ave, Toronto, ON M5T 2G7',
+  },
+  'Sofia Rossi': {
+    role: 'Worker',
+    phone: '+1 416-555-0119',
+    email: 'sofia.rossi@example.com',
+    address: '1020 College St, Toronto, ON M6H 1A6',
+  },
+};
+
+/** The chosen worker's large name and Role / Phone / Email / Address on the Worker page. */
+export async function expectWorkerProfile(page: Page, name: WorkerName): Promise<void> {
+  const profile = page.getByTestId('my-profile');
+  await expect(profile.getByRole('heading', { name, exact: true })).toBeVisible();
+  const p = PROFILES[name];
+  for (const [label, value] of [
+    ['Role', p.role],
+    ['Phone', p.phone],
+    ['Email', p.email],
+    ['Address', p.address],
+  ] as const) {
+    await expect(cardDetail(profile, label)).toHaveText(value);
+  }
 }
 
 export async function expectWorkerStatus(

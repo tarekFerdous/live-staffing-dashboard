@@ -1,11 +1,14 @@
 import {
   actionButton,
+  chartCaption,
   expect,
   expectCounts,
   expectManagerStatus,
+  expectTone,
   expectWorkerStatus,
   openManager,
   openWorker,
+  staffingTile,
   test,
   timelineEntries,
   WORKERS,
@@ -29,22 +32,43 @@ test('full lifecycle: invite, accept, check in, check out, live across two sessi
   await actionButton(manager, 'Invite', AMARA).click();
   await expectManagerStatus(manager, AMARA, 'Invited');
   await expectWorkerStatus(workerPage, 'Invited');
+  await expectTone(manager, AMARA, 'none');
 
   // Worker accepts: the manager's page and counts update.
   await actionButton(workerPage, 'Accept', AMARA).click();
   await expectWorkerStatus(workerPage, 'Accepted');
   await expectManagerStatus(manager, AMARA, 'Accepted');
   await expectCounts(manager, { filled: 1 });
+  // Status tints, live: green once accepted.
+  await expectTone(manager, AMARA, 'good');
 
   await actionButton(workerPage, 'Check in', AMARA).click();
   await expectManagerStatus(manager, AMARA, 'Accepted', 'Checked in');
   await expectCounts(manager, { filled: 1, checkedIn: 1 });
+  await expectTone(manager, AMARA, 'warn');
+  // The worker's own card is never tinted.
+  await expect(workerPage.getByRole('region', { name: `${AMARA}, your status` })).not.toHaveAttribute(
+    'data-tone',
+  );
+
+  // The Staffing chart follows the selected tile: Filled by default, then Checked in.
+  await expect(staffingTile(manager, 'Filled')).toHaveAttribute('aria-pressed', 'true');
+  await expect(chartCaption(manager)).toHaveText(/^Filled went from 0 to 1 /);
+  await staffingTile(manager, 'Checked in').click();
+  await expect(staffingTile(manager, 'Checked in')).toHaveAttribute('aria-pressed', 'true');
+  await expect(staffingTile(manager, 'Filled')).toHaveAttribute('aria-pressed', 'false');
+  await expect(chartCaption(manager)).toHaveText(/^Checked in went from 0 to 1 at /);
 
   await actionButton(workerPage, 'Check out', AMARA).click();
   await expectWorkerStatus(workerPage, 'Accepted', 'Checked out');
   await expect(workerPage.getByText("You've checked out. This shift is complete.")).toBeVisible();
   await expectManagerStatus(manager, AMARA, 'Accepted', 'Checked out');
   await expectCounts(manager, { filled: 1, checkedIn: 0, checkedOut: 1 });
+  await expectTone(manager, AMARA, 'none');
+  // Still on Checked in, updated live; a reload goes back to Filled.
+  await expect(chartCaption(manager)).toHaveText(/^Checked in was back at 0 (at|between) /);
+  await manager.reload();
+  await expect(staffingTile(manager, 'Filled')).toHaveAttribute('aria-pressed', 'true');
 
   // Checked out is final: the worker has no buttons left.
   await expect(workerPage.getByRole('button', { name: new RegExp(AMARA) })).toHaveCount(0);

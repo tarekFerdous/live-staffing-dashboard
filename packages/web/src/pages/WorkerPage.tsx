@@ -1,7 +1,8 @@
-import { canApply, type Participation, type Snapshot, type WorkerState } from '@staffing/domain';
-import { useState } from 'react';
+import { canApply, type Participation, type Snapshot, type Worker, type WorkerState } from '@staffing/domain';
+import { Fragment, useState, type ReactNode } from 'react';
 import { ActionButtons } from '../components/ActionButtons';
 import { QueryState } from '../components/QueryState';
+import { Select } from '../components/Select';
 import { ShiftDetails } from '../components/ShiftDetails';
 import { Card } from '../components/Card';
 import { WorkerIcon } from '../components/icons';
@@ -27,6 +28,29 @@ function noActionHint(w: WorkerState): string {
     : NO_ACTION_HINT[w.participation];
 }
 
+/** The chosen worker's name, large, then their details. */
+function Profile({ worker: w }: { worker: Worker }) {
+  const rows: [string, ReactNode][] = [
+    ['Role', w.role],
+    ['Phone', <a href={`tel:${w.phone.replace(/[^\d+]/g, '')}`}>{w.phone}</a>],
+    ['Email', <a href={`mailto:${w.email}`}>{w.email}</a>],
+    ['Address', w.address],
+  ];
+  return (
+    <div className="mt-5" data-testid="my-profile">
+      <h3 className="text-2xl leading-tight font-bold tracking-tight">{w.name}</h3>
+      <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+        {rows.map(([label, value]) => (
+          <Fragment key={label}>
+            <dt className="text-muted">{label}</dt>
+            <dd className="font-medium [&_a]:underline [&_a]:underline-offset-2">{value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function WorkerView({ snapshot }: { snapshot: Snapshot }) {
   const { shift, workers } = snapshot;
   const [workerId, setWorkerId] = useState<string>(() => readStorage(WORKER_STORAGE_KEY) ?? '');
@@ -39,26 +63,20 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Card icon={<WorkerIcon />} title="Worker" subtitle="Choose your name">
-        <label htmlFor="worker-select" className="mb-2 block text-sm font-semibold">
-          Who are you?
-        </label>
-        <select
-          id="worker-select"
+      {/* Raised so the open picker menu floats over the cards after it. */}
+      <Card icon={<WorkerIcon />} title="Worker" subtitle="Choose your name" className="relative z-10">
+        <Select
+          label="Who are you?"
+          placeholder="Choose your name…"
           value={me ? me.id : ''}
-          onChange={(e) => choose(e.target.value)}
-          className="w-full rounded-full bg-surface px-4 py-2.5 font-medium text-fg shadow-sm"
-        >
-          <option value="" disabled>
-            Choose your name…
-          </option>
-          {workers.map((w) => (
-            <option key={w.id} value={w.id}>
-              {w.name}
-            </option>
-          ))}
-        </select>
-        {!me && <p className="mt-3 text-sm text-muted">Choose your name to see your status.</p>}
+          options={workers.map((w) => ({ value: w.id, label: w.name }))}
+          onChange={choose}
+        />
+        {me ? (
+          <Profile worker={me} />
+        ) : (
+          <p className="mt-3 text-sm text-muted">Choose your name to see your status.</p>
+        )}
       </Card>
 
       {me && (

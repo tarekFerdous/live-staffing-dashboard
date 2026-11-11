@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { LiveIcon } from './components/icons';
-import { LivePausedNotice, LiveStatusBar } from './components/LiveStatus';
+import { GUTTER, LivePausedNotice, LiveStatusBar } from './components/LiveStatus';
 import { ResetDemo } from './components/ResetDemo';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ToastProvider } from './components/Toast';
@@ -33,7 +33,7 @@ function Layout() {
         Skip to content
       </a>
       <header>
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-3 px-4 pt-5 pb-2">
+        <div className={`flex flex-wrap items-center gap-x-4 gap-y-3 pt-5 pb-2 ${GUTTER}`}>
           <span className="flex items-center gap-2 text-base font-bold tracking-tight">
             <span className="icon-badge h-7 w-7">
               <LiveIcon size={14} />
@@ -57,7 +57,7 @@ function Layout() {
         </div>
         <LivePausedNotice />
       </header>
-      <main id="main" tabIndex={-1} className="mx-auto max-w-5xl px-4 py-6 focus:outline-none">
+      <main id="main" tabIndex={-1} className={`py-6 focus:outline-none ${GUTTER}`}>
         <Outlet />
       </main>
     </div>

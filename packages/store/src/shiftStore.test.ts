@@ -83,6 +83,18 @@ describe('shift store against DynamoDB Local', () => {
     expect(snap!.epoch).toBe(1);
     expect(snap!.shift).toEqual({ ...SEED.shift, acceptedCount: 0 });
     expect(snap!.workers).toHaveLength(3);
+    // Seeded profile details are stored and read back.
+    expect(
+      snap!.workers.map(({ id, name, role, phone, email, address }) => ({
+        id,
+        name,
+        role,
+        phone,
+        email,
+        address,
+      })),
+    ).toEqual(expect.arrayContaining(SEED.workers));
+    for (const w of SEED.workers) expect(w.role).toBe('Worker');
     for (const w of snap!.workers) {
       expect(w).toMatchObject({
         participation: 'uninvited',

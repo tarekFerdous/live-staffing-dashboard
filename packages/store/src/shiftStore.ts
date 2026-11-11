@@ -87,6 +87,10 @@ function toWorker(item: Item): Worker {
   return WorkerSchema.parse({
     id: item.id,
     name: item.name,
+    role: item.role,
+    phone: item.phone,
+    email: item.email,
+    address: item.address,
     participation: item.participation,
     attendance: item.attendance,
     invitedAt: item.invitedAt ?? null,

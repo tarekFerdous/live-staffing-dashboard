@@ -396,3 +396,26 @@ describe('#18 check-in and check-out', () => {
     expect(deriveCounts(snap.workers, 2)).toEqual({ required: 2, filled: 2, remaining: 0, checkedIn: 1, checkedOut: 1 });
   });
 });
+
+describe('profile details survive every action', () => {
+  it('invite, accept, check in, check out, cancel and decline keep role, phone, email, address', async () => {
+    const { store, act } = await setup();
+    const profile = (id: string) => {
+      const { role, phone, email, address } = SEED.workers.find((w) => w.id === id)!;
+      return { role, phone, email, address };
+    };
+    const steps: [string, Action][] = [
+      ['amara', 'invite'], ['amara', 'accept'], ['amara', 'check_in'], ['amara', 'check_out'],
+      ['liam', 'invite'], ['liam', 'accept'], ['liam', 'cancel'],
+      ['sofia', 'invite'], ['sofia', 'decline'],
+    ];
+    for (const [id, action] of steps) {
+      const res = await act(id, action);
+      expect(res.statusCode, `${id} ${action}`).toBe(200);
+      expect(worker(res)).toMatchObject(profile(id));
+    }
+    const { events, snap } = await expectLog(store, steps.map(([, a]) => a));
+    for (const e of events) expect(e.row).toMatchObject(profile(e.workerId));
+    for (const w of snap.workers) expect(w).toMatchObject(profile(w.id));
+  });
+});
