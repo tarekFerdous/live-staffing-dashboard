@@ -69,6 +69,55 @@ test('the Shift card photo fills the free height, with the details at the bottom
   }
 });
 
+/** A loaded, decorative, round photo of about `size` px, served by the app as webp. */
+async function expectWorkerPhoto(page: Page, photo: Locator, size: number) {
+  await expect(photo).toHaveJSProperty('complete', true);
+  expect(await photo.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  expect(await photo.getAttribute('alt')).toBe('');
+  const b = await box(photo);
+  expect(Math.abs(b.width - size)).toBeLessThanOrEqual(1);
+  expect(Math.abs(b.height - size)).toBeLessThanOrEqual(1);
+  expect(await photo.evaluate((img) => getComputedStyle(img).borderRadius)).not.toBe('0px');
+  const res = await page.request.get(new URL((await photo.getAttribute('src'))!, page.url()).href);
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toContain('image/webp');
+}
+
+test("every worker card's header shows that worker's own 32 px photo", async ({ manager, workerPage }) => {
+  await openManager(manager);
+  const srcs = new Set<string>();
+  for (const name of Object.values(WORKERS)) {
+    const photo = managerWorker(manager, name).locator('header img');
+    await expectWorkerPhoto(manager, photo, 32);
+    srcs.add((await photo.getAttribute('src'))!);
+  }
+  expect(srcs.size).toBe(3);
+
+  // The worker's own status card on the Worker page too.
+  await openWorker(workerPage, WORKERS.liam);
+  const own = workerPage.getByRole('region', { name: /^Liam Chen, your status/ }).locator('header img');
+  await expectWorkerPhoto(workerPage, own, 32);
+});
+
+test("the Worker profile shows the chosen worker's 64 px photo left of their name", async ({
+  workerPage,
+}) => {
+  await openWorker(workerPage, WORKERS.amara);
+  const profile = workerPage.getByTestId('my-profile');
+  for (const width of [WIDTHS.desktop, WIDTHS.phone]) {
+    await workerPage.setViewportSize({ width, height: 900 });
+    const photo = profile.getByTestId('worker-photo');
+    await expectWorkerPhoto(workerPage, photo, 64);
+    const p = await box(photo);
+    const name = await box(profile.getByRole('heading', { name: WORKERS.amara }));
+    expect(p.x + p.width).toBeLessThanOrEqual(name.x);
+    // Same row: the name sits within the photo's height.
+    expect(name.y).toBeGreaterThanOrEqual(p.y - 1);
+    expect(name.y + name.height).toBeLessThanOrEqual(p.y + p.height + 1);
+    await expectNoSideScroll(workerPage);
+  }
+});
+
 test('the shared layout spans the full width with lined-up gutters and no side scroll', async ({
   manager,
   workerPage,

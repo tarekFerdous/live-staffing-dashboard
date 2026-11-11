@@ -1,12 +1,12 @@
 import type { Shift } from '@staffing/domain';
-// Photo by Guillaume DHALLUIN on Unsplash (Unsplash License); credited in the README.
-import restaurantPhoto from '../assets/shift-restaurant.webp';
+// Photo by Rebecca Johnsen on Unsplash (Unsplash License); credited in the README.
+import galaPhoto from '../assets/shift-winter-gala.webp';
 import { formatDate, formatTime, zoneName } from '../lib/time';
 import { Card } from './Card';
 import { ShiftIcon } from './icons';
 
 /**
- * The shift like a flight card: a restaurant photo under the title, then the time range in large
+ * The shift like a flight card: a winter gala photo under the title, then the time range in large
  * type and where and when, anchored at the bottom.
  */
 export function ShiftDetails({ shift, className }: { shift: Shift; className?: string }) {
@@ -18,7 +18,15 @@ export function ShiftDetails({ shift, className }: { shift: Shift; className?: s
       subtitle="Shift"
       className={className}
       // Decorative: the card reads the same without it.
-      media={<img src={restaurantPhoto} alt="" decoding="async" />}
+      media={
+        <img
+          src={galaPhoto}
+          alt=""
+          decoding="async"
+          // When the band is wide and short, keep the garland's bows above the set glasses in view.
+          className="object-[50%_40%]"
+        />
+      }
     >
       <p data-testid="shift-time" className="text-2xl tracking-tight">
         <span className="whitespace-nowrap">{formatTime(shift.startsAt, tz)}</span>

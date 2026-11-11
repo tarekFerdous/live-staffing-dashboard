@@ -41,16 +41,16 @@ The URL is the stack's `SiteUrl` output; see [Site hosting](#site-hosting-tempor
     built from the event log. A dotted line runs from the latest point to the target (Filled up to the required
     count, Remaining down to 0). Every whole number on the Y axis is labelled with a faint gridline. The chart has
     a text alternative ("Checked in went from 0 to 2 between 3:01 p.m. and 3:05 p.m.").
-  - **Shift:** a restaurant photo under the title (white over a blurred, darkened band) that fills the card's
+  - **Shift:** a winter gala photo (a table set before a white-and-silver garlanded fireplace) under the title (white over a blurred, darkened band) that fills the card's
     free height, then the time range in large type and location, date and timezone, all in the shift's timezone.
-  - **One card per worker:** name • status, a sentence about the latest change ("Accepted at 3:04 p.m."), a
+  - **One card per worker:** the worker's round photo, name • status, a sentence about the latest change ("Accepted at 3:04 p.m."), a
     parcel-style tracker (Invited → Accepted → Checked in → Checked out; a decline or cancel stops the bar in
     muted red and says so in words), participation, attendance and all four timestamps, and **Invite** as a
     full-width pill when allowed. Manager actions are never optimistic.
   - **Activity:** the last 50 changes, newest first. It loads the end of the event log once, then takes each
     live or caught-up event as it arrives; after an outage the catch-up fills the gap in order.
 - **Worker** (`/worker`): a "Who are you?" picker (a themed, keyboard-friendly dropdown, no UI library), then
-  the chosen worker's name in large type with their role, phone, email and address (made-up demo details from
+  the chosen worker's photo beside their name in large type, with their role, phone, email and address (made-up demo details from
   the seed, restored by Reset demo), and the worker's own card in the same style. Actions are
   full-width pills: the step forward (Accept, Check in, Check out) is the primary slate ink (white in dark
   mode), the others a light secondary wash. Actions are
@@ -64,11 +64,18 @@ The URL is the stack's `SiteUrl` output; see [Site hosting](#site-hosting-tempor
   darker slate glass cards, white text and white selected pills, lavender-grey muted text and light glass
   secondary pills. Each theme's selected pill is the other theme's text colour. Colour is kept for state
   only: muted red for a stop or an error, a green dot for Live, amber while reconnecting. Five small hand-drawn SVG icons, no icon or chart library.
-- **Photo credit:** the Shift card's restaurant photo is by
-  [Guillaume DHALLUIN](https://unsplash.com/@lephotographelillois) on
-  [Unsplash](https://unsplash.com/photos/a-formal-dining-room-with-set-tables-N1IlIbAjfzs), used under the
-  [Unsplash License](https://unsplash.com/license). It is bundled with the app (a 131 KB webp), so it also loads
-  offline in local mode, and is decorative (empty alt text).
+- **Photo credits:** all photos are from Unsplash, used under the
+  [Unsplash License](https://unsplash.com/license). They are bundled with the app as webp, so they also load
+  offline in local mode, and are decorative (empty alt text, since the name or title is always beside them).
+  The worker portraits are stock photos of models, not the made-up people named.
+  - Shift card: the winter gala photo by [Rebecca Johnsen](https://unsplash.com/@uberzeught)
+    ([photo](https://unsplash.com/photos/XtPlbOvpu5E)), 1600 × 1067, 131 KB.
+  - Amara Okafor: [alex starnes](https://unsplash.com/@alexstarnes)
+    ([photo](https://unsplash.com/photos/WYE2UhXsU1Y)).
+  - Liam Chen: [Hà Nguyễn](https://unsplash.com/@lavinhha) ([photo](https://unsplash.com/photos/OFSQ6bHjFjs)).
+  - Sofia Rossi: [Jake Nackos](https://unsplash.com/@jakenackos)
+    ([photo](https://unsplash.com/photos/IF9TK5Uy-KI)).
+  - The portraits are cropped square around the face, 128 px (2× the largest display size), about 3 KB each.
 - **Theme:** follows the system setting; the header's Theme pill overrides it, each click moving System → Light
   → Dark → System (remembered in `localStorage` when available). Colours are CSS variable tokens, defined once for light and twice for dark (system and
   override).

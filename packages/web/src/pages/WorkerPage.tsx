@@ -6,6 +6,7 @@ import { Select } from '../components/Select';
 import { ShiftDetails } from '../components/ShiftDetails';
 import { Card } from '../components/Card';
 import { WorkerIcon } from '../components/icons';
+import { WorkerAvatar } from '../components/WorkerAvatar';
 import { WorkerCard } from '../components/WorkerCard';
 import { readStorage, writeStorage } from '../lib/storage';
 import { useSnapshot } from '../lib/useSnapshot';
@@ -28,7 +29,7 @@ function noActionHint(w: WorkerState): string {
     : NO_ACTION_HINT[w.participation];
 }
 
-/** The chosen worker's name, large, then their details. */
+/** The chosen worker's photo beside their name, large, then their details. */
 function Profile({ worker: w }: { worker: Worker }) {
   const rows: [string, ReactNode][] = [
     ['Role', w.role],
@@ -38,7 +39,12 @@ function Profile({ worker: w }: { worker: Worker }) {
   ];
   return (
     <div className="mt-5" data-testid="my-profile">
-      <h3 className="text-2xl leading-tight tracking-tight">{w.name}</h3>
+      <div className="flex items-center gap-4">
+        <span className="icon-badge h-16 w-16" data-testid="profile-photo">
+          <WorkerAvatar workerId={w.id} iconSize={28} />
+        </span>
+        <h3 className="min-w-0 text-2xl leading-tight tracking-tight">{w.name}</h3>
+      </div>
       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
         {rows.map(([label, value]) => (
           <Fragment key={label}>

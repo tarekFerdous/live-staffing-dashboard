@@ -113,6 +113,29 @@ describe('worker page', () => {
     expect(detail(liam, 'Address')).toHaveTextContent('412 Spadina Ave, Toronto');
   });
 
+  it("shows the chosen worker's photo beside their name, and switches it with the choice", async () => {
+    renderApp('/worker');
+    await pickWorker('Liam Chen');
+    const photo = () => within(screen.getByTestId('profile-photo')).getByTestId('worker-photo');
+    expect(photo()).toHaveAttribute('alt', '');
+    expect(photo()).toHaveAttribute('src', expect.stringMatching(/liam.*\.webp/));
+    // Beside the name: the photo and the heading share one row.
+    const heading = within(screen.getByTestId('my-profile')).getByRole('heading', { name: 'Liam Chen' });
+    expect(heading.parentElement).toContainElement(screen.getByTestId('profile-photo'));
+
+    await pickWorker('Sofia Rossi');
+    expect(photo()).toHaveAttribute('src', expect.stringMatching(/sofia.*\.webp/));
+  });
+
+  it('shows the person icon in the profile for a worker without a photo', async () => {
+    stubFetch(jsonResponse(200, makeSnapshot([worker('ghost', 'Gus Ghost')])));
+    renderApp('/worker');
+    await pickWorker('Gus Ghost');
+    const badge = screen.getByTestId('profile-photo');
+    expect(badge.querySelector('img')).toBeNull();
+    expect(badge.querySelector('svg')).not.toBeNull();
+  });
+
   it('ignores a remembered worker that no longer exists', async () => {
     localStorage.setItem(WORKER_STORAGE_KEY, 'ghost');
     renderApp('/worker');

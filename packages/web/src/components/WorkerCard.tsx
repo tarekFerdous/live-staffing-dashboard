@@ -3,11 +3,11 @@ import type { ReactNode } from 'react';
 import { formatTime } from '../lib/time';
 import { toneFor, trackerFor, workerSentence } from '../lib/tracker';
 import { Card } from './Card';
-import { WorkerIcon } from './icons';
 import { Tracker } from './Tracker';
+import { WorkerAvatar } from './WorkerAvatar';
 
 /**
- * One worker as a card (manager page and the worker's own page): name • status in the header,
+ * One worker as a card (manager page and the worker's own page): their photo and name • status in the header,
  * a sentence about the latest change, the tracker, then status and all four timestamps.
  */
 export function WorkerCard({
@@ -40,7 +40,7 @@ export function WorkerCard({
   ];
   return (
     <Card
-      icon={<WorkerIcon />}
+      icon={<WorkerAvatar workerId={w.id} />}
       title={title}
       subtitle={trackerFor(w).label}
       summary={workerSentence(w, timeZone)}

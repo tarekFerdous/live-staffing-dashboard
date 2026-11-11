@@ -23,7 +23,7 @@ describe('ShiftDetails', () => {
     const img = container.querySelector('img');
     expect(img).not.toBeNull();
     expect(img).toHaveAttribute('alt', '');
-    expect(img).toHaveAttribute('src', expect.stringMatching(/shift-restaurant.*\.webp/));
+    expect(img).toHaveAttribute('src', expect.stringMatching(/shift-winter-gala.*\.webp/));
     expect(img!.closest('[aria-hidden="true"]')).not.toBeNull();
     expect(screen.queryByRole('img')).toBeNull();
   });
