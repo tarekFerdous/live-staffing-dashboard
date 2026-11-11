@@ -80,3 +80,8 @@ jobs:
           done
           cat body.json || true
           exit 1
+
+      # Subscribes with the browser transport and API key, performs one action through
+      # CloudFront, and fails unless that change arrives on the subscription in time.
+      - name: Live-update smoke test (AppSync Events)
+        run: pnpm --filter @staffing/infra smoke:live

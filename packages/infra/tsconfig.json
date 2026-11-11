@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["bin", "lib", "test"]
+  // DOM: the live smoke script reuses the browser's WebSocket transport (Node 22 has WebSocket built in).
+  "compilerOptions": { "lib": ["ES2023", "DOM"] },
+  "include": ["bin", "lib", "test", "scripts"]
 }

@@ -50,6 +50,30 @@ export const SnapshotSchema = z.object({
 });
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 
+/**
+ * One committed change, as served by the catch-up API and pushed live.
+ * `row` is the complete worker row after the change; `publishedAt` is only set on live pushes.
+ */
+export const ShiftEventSchema = z.object({
+  seq: z.number().int().positive(),
+  type: z.enum(ACTIONS),
+  workerId: z.string().min(1),
+  row: WorkerSchema,
+  at: isoInstant,
+  publishedAt: isoInstant.optional(),
+});
+export type ShiftEventMessage = z.infer<typeof ShiftEventSchema>;
+
+/** Most events the catch-up API returns in one page; a bigger gap falls back to the snapshot. */
+export const MAX_EVENTS_PAGE = 200;
+
+export const EventsPageSchema = z.object({
+  events: z.array(ShiftEventSchema),
+  /** True when more events exist after the last one returned. */
+  hasMore: z.boolean(),
+});
+export type EventsPage = z.infer<typeof EventsPageSchema>;
+
 export const ActionRequestSchema = z
   .object({
     action: z.enum(ACTIONS),

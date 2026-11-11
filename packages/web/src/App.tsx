@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
+import { LivePausedNotice, LiveStatusBar } from './components/LiveStatus';
 import { ToastProvider } from './components/Toast';
+import { LiveProvider } from './lib/live';
+import type { Transport } from './lib/sync/shiftSync';
 import { ManagerPage } from './pages/ManagerPage';
 import { WorkerPage } from './pages/WorkerPage';
 
@@ -17,8 +20,11 @@ function Layout() {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
-        <nav aria-label="Main" className="mx-auto flex max-w-4xl items-center gap-2 px-4 py-3">
-          <span className="mr-auto font-semibold">Live Staffing</span>
+        <nav aria-label="Main" className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 px-4 py-3">
+          <span className="font-semibold">Live Staffing</span>
+          <div className="mr-auto">
+            <LiveStatusBar />
+          </div>
           <NavLink to="/manager" className={link}>
             Manager
           </NavLink>
@@ -26,6 +32,7 @@ function Layout() {
             Worker
           </NavLink>
         </nav>
+        <LivePausedNotice />
       </header>
       <main className="mx-auto max-w-4xl px-4 py-6">
         <Outlet />
@@ -34,18 +41,27 @@ function Layout() {
   );
 }
 
-export function App({ queryClient }: { queryClient: QueryClient }) {
+/** `transport` is the live channel; without one the app works by refetching after actions. */
+export function App({
+  queryClient,
+  transport = null,
+}: {
+  queryClient: QueryClient;
+  transport?: Transport | null;
+}) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/manager" element={<ManagerPage />} />
-            <Route path="/worker" element={<WorkerPage />} />
-            <Route path="*" element={<Navigate to="/manager" replace />} />
-          </Route>
-        </Routes>
-      </ToastProvider>
+      <LiveProvider transport={transport}>
+        <ToastProvider>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/manager" element={<ManagerPage />} />
+              <Route path="/worker" element={<WorkerPage />} />
+              <Route path="*" element={<Navigate to="/manager" replace />} />
+            </Route>
+          </Routes>
+        </ToastProvider>
+      </LiveProvider>
     </QueryClientProvider>
   );
 }

@@ -57,6 +57,12 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: ^3.1166.0
         version: 3.1166.0(@aws-sdk/client-dynamodb@3.1166.0)
+      '@aws-sdk/util-dynamodb':
+        specifier: ^3.996.9
+        version: 3.996.9(@aws-sdk/client-dynamodb@3.1166.0)
+      '@smithy/signature-v4':
+        specifier: ^5.7.5
+        version: 5.7.5
       '@staffing/domain':
         specifier: workspace:*
         version: link:../domain

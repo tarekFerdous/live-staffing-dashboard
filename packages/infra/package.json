@@ -10,6 +10,7 @@
     "deploy:app": "cdk deploy LiveStaffingApp --outputs-file cdk-outputs.json --require-approval never",
     "deploy:hotswap": "cdk deploy LiveStaffingApp --hotswap --outputs-file cdk-outputs.json",
     "destroy:app": "cdk destroy LiveStaffingApp --force",
+    "smoke:live": "tsx scripts/smoke-live.ts",
     "bootstrap:aws": "cdk bootstrap --app \"tsx bin/bootstrap.ts\" --profile staffing && cdk deploy --app \"tsx bin/bootstrap.ts\" --profile staffing --require-approval never --outputs-file bootstrap-outputs.json"
   },
   "dependencies": {

@@ -17,7 +17,10 @@ beforeAll(() => {
   const app = new App();
   tagApp(app);
   t = Template.fromStack(
-    new AppStack(app, 'App', { env: { account: '123456789012', region: 'ca-central-1' }, siteAssetPath: site }),
+    new AppStack(app, 'App', {
+      env: { account: '123456789012', region: 'ca-central-1' },
+      siteAssetPath: site,
+    }),
   );
 });
 
@@ -45,7 +48,9 @@ describe('AppStack', () => {
     const origin = cfg.Origins.find((o: { Id: string }) => o.Id === api.TargetOriginId);
     expect(origin.CustomOriginConfig.OriginProtocolPolicy).toBe('https-only');
     // The default behaviour serves the site from S3 through OAC.
-    const s3Origin = cfg.Origins.find((o: { Id: string }) => o.Id === cfg.DefaultCacheBehavior.TargetOriginId);
+    const s3Origin = cfg.Origins.find(
+      (o: { Id: string }) => o.Id === cfg.DefaultCacheBehavior.TargetOriginId,
+    );
     expect(s3Origin.OriginAccessControlId).toBeDefined();
   });
 
@@ -53,6 +58,83 @@ describe('AppStack', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /api/shifts/{shiftId}' });
     t.hasResourceProperties('AWS::ApiGatewayV2::Route', {
       RouteKey: 'POST /api/shifts/{shiftId}/workers/{workerId}/actions',
+    });
+  });
+
+  it('serves the event catch-up route from the HTTP API', () => {
+    t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /api/shifts/{shiftId}/events' });
+  });
+
+  describe('live updates', () => {
+    it('feeds the publisher from the table stream, filtered to new EVT# items', () => {
+      const mappings = Object.values(t.findResources('AWS::Lambda::EventSourceMapping'));
+      expect(mappings).toHaveLength(1);
+      const m = mappings[0]!.Properties;
+      expect(m.StartingPosition).toBe('LATEST');
+      expect(m.BatchSize).toBe(1);
+      expect(m.MaximumBatchingWindowInSeconds ?? 0).toBe(0);
+      expect(m.BisectBatchOnFunctionError).toBe(true);
+      expect(m.MaximumRetryAttempts).toBe(3);
+      expect(m.DestinationConfig.OnFailure.Destination).toBeDefined();
+      expect(m.FilterCriteria.Filters).toHaveLength(1);
+      expect(JSON.parse(m.FilterCriteria.Filters[0].Pattern)).toEqual({
+        eventName: ['INSERT'],
+        dynamodb: { Keys: { SK: { S: [{ prefix: 'EVT#' }] } } },
+      });
+    });
+
+    it('sends failed publishes to an SQS dead-letter queue', () => {
+      const [queueId] = Object.keys(t.findResources('AWS::SQS::Queue'));
+      expect(queueId).toBeDefined();
+      const m = Object.values(t.findResources('AWS::Lambda::EventSourceMapping'))[0]!.Properties;
+      expect(m.DestinationConfig.OnFailure.Destination).toEqual({ 'Fn::GetAtt': [queueId, 'Arn'] });
+    });
+
+    it('allows publishing with IAM only and subscribing with the API key only', () => {
+      t.hasResourceProperties('AWS::AppSync::Api', {
+        EventConfig: {
+          AuthProviders: Match.arrayWith([{ AuthType: 'API_KEY' }, { AuthType: 'AWS_IAM' }]),
+          ConnectionAuthModes: [{ AuthType: 'API_KEY' }],
+          DefaultPublishAuthModes: [{ AuthType: 'AWS_IAM' }],
+          DefaultSubscribeAuthModes: [{ AuthType: 'API_KEY' }],
+        },
+      });
+      const namespaces = Object.values(t.findResources('AWS::AppSync::ChannelNamespace'));
+      expect(namespaces).toHaveLength(1);
+      expect(namespaces[0]!.Properties).toMatchObject({
+        Name: 'shifts',
+        PublishAuthModes: [{ AuthType: 'AWS_IAM' }],
+        SubscribeAuthModes: [{ AuthType: 'API_KEY' }],
+      });
+    });
+
+    it('gives the publisher role EventPublish and nothing else on the Event API', () => {
+      const appsyncActions = Object.values(t.findResources('AWS::IAM::Policy')).flatMap((p) =>
+        p.Properties.PolicyDocument.Statement.flatMap((s: { Action: string | string[] }) =>
+          [s.Action].flat().filter((a) => a.startsWith('appsync:')),
+        ),
+      );
+      expect(appsyncActions).toEqual(['appsync:EventPublish']);
+    });
+
+    it('creates a long-lived API key for browsers', () => {
+      const keys = Object.values(t.findResources('AWS::AppSync::ApiKey'));
+      expect(keys).toHaveLength(1);
+      expect(keys[0]!.Properties.Expires).toBeGreaterThan(Date.now() / 1000 + 300 * 24 * 3600);
+    });
+
+    it('ships config.json next to the site and prints the realtime endpoints', () => {
+      const deployment = Object.values(t.findResources('Custom::CDKBucketDeployment'))[0]!;
+      expect(deployment.Properties.SourceObjectKeys).toHaveLength(2);
+      t.hasOutput('EventsHttpHost', {});
+      t.hasOutput('EventsRealtimeHost', {});
+      t.hasOutput('EventsApiKey', {});
+    });
+
+    it('points the publisher at the Event API HTTP host', () => {
+      t.hasResourceProperties('AWS::Lambda::Function', {
+        Environment: { Variables: { EVENTS_HTTP_HOST: Match.anyValue() } },
+      });
     });
   });
 

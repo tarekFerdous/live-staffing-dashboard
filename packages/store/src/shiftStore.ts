@@ -53,8 +53,8 @@ export type ShiftStore = {
    * and a new `EVT#<seq>` item are written in one conditional transaction.
    */
   applyAction(shiftId: string, workerId: string, action: Action, opts?: ApplyOptions): Promise<ActionOutcome>;
-  /** Events with seq > afterSeq, oldest first. */
-  listEvents(shiftId: string, afterSeq?: number): Promise<ShiftEvent[]>;
+  /** Events with seq > afterSeq, oldest first; at most `limit` of them when given. */
+  listEvents(shiftId: string, afterSeq?: number, limit?: number): Promise<ShiftEvent[]>;
 };
 
 /** Optimistic retries when another write to the same shift got in first. */
@@ -120,9 +120,14 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
     );
     const meta = read.Responses?.[0]?.Item;
     const workerItem = read.Responses?.[1]?.Item;
-    if (!meta) return { kind: 'not_found', code: 'SHIFT_NOT_FOUND', message: `Shift "${shiftId}" was not found.` };
+    if (!meta)
+      return { kind: 'not_found', code: 'SHIFT_NOT_FOUND', message: `Shift "${shiftId}" was not found.` };
     if (!workerItem) {
-      return { kind: 'not_found', code: 'WORKER_NOT_FOUND', message: `Worker "${workerId}" is not on this shift.` };
+      return {
+        kind: 'not_found',
+        code: 'WORKER_NOT_FOUND',
+        message: `Worker "${workerId}" is not on this shift.`,
+      };
     }
 
     const worker = toWorker(workerItem);
@@ -141,8 +146,15 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
     const nextSeq = seq + 1;
 
     // Worker row: only from an allowed state, and only from the version we read.
-    const fromStates = t.from.map((_, i) => `(participation = :fp${i} AND attendance = :fa${i})`).join(' OR ');
-    const values: Item = { ':p': next.participation, ':a': next.attendance, ':v': next.version, ':rv': worker.version };
+    const fromStates = t.from
+      .map((_, i) => `(participation = :fp${i} AND attendance = :fa${i})`)
+      .join(' OR ');
+    const values: Item = {
+      ':p': next.participation,
+      ':a': next.attendance,
+      ':v': next.version,
+      ':rv': worker.version,
+    };
     t.from.forEach((f, i) => {
       values[`:fp${i}`] = f.participation;
       values[`:fa${i}`] = f.attendance;
@@ -264,12 +276,22 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
       return { kind: 'busy' };
     },
 
-    async listEvents(shiftId, afterSeq = 0) {
-      const items = await queryAll({
+    async listEvents(shiftId, afterSeq = 0, limit) {
+      const input = {
         KeyConditionExpression: 'PK = :pk AND SK BETWEEN :from AND :to',
-        ExpressionAttributeValues: { ':pk': shiftPk(shiftId), ':from': evtSk(afterSeq + 1), ':to': `${EVT_PREFIX}~` },
+        ExpressionAttributeValues: {
+          ':pk': shiftPk(shiftId),
+          ':from': evtSk(afterSeq + 1),
+          ':to': `${EVT_PREFIX}~`,
+        },
         ConsistentRead: true,
-      });
+      };
+      // Events are small, so one page of `limit` items stays far below the 1 MB Query page size.
+      const items =
+        limit === undefined
+          ? await queryAll(input)
+          : (((await doc.send(new QueryCommand({ ...input, TableName: tableName, Limit: limit }))).Items ??
+              []) as Item[]);
       return items.map((i) => ({
         seq: i.seq as number,
         type: i.type as Action,

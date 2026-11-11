@@ -1,10 +1,11 @@
 import {
   ApiErrorSchema,
+  EventsPageSchema,
   SnapshotSchema,
   WorkerSchema,
   type Action,
+  type EventsPage,
   type Snapshot,
-  type Worker,
 } from '@staffing/domain';
 import { z } from 'zod';
 
@@ -50,7 +51,13 @@ export function fetchSnapshot(shiftId: string, signal?: AbortSignal): Promise<Sn
   return request(`/api/shifts/${encodeURIComponent(shiftId)}`, SnapshotSchema, { signal });
 }
 
-const ActionResponseSchema = z.object({ worker: WorkerSchema, seq: z.number().optional() });
+/** Committed changes after `afterSeq`, oldest first (one page; `hasMore` means load the snapshot). */
+export function fetchEvents(shiftId: string, afterSeq: number): Promise<EventsPage> {
+  return request(`/api/shifts/${encodeURIComponent(shiftId)}/events?after=${afterSeq}`, EventsPageSchema);
+}
+
+const ActionResponseSchema = z.object({ worker: WorkerSchema, seq: z.number().int().positive().optional() });
+export type ActionResponse = z.infer<typeof ActionResponseSchema>;
 
 /**
  * One call per attempt. `idempotencyKey` identifies the user's intent: retries of
@@ -61,8 +68,8 @@ export async function postAction(
   workerId: string,
   body: { action: Action; expectedVersion?: number },
   idempotencyKey: string,
-): Promise<Worker> {
-  const res = await request(
+): Promise<ActionResponse> {
+  return request(
     `/api/shifts/${encodeURIComponent(shiftId)}/workers/${encodeURIComponent(workerId)}/actions`,
     ActionResponseSchema,
     {
@@ -71,7 +78,6 @@ export async function postAction(
       body: JSON.stringify(body),
     },
   );
-  return res.worker;
 }
 
 export function newIdempotencyKey(): string {

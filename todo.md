@@ -18,6 +18,11 @@ The rest works: CI checks pass and GitHub signs in to AWS through OIDC. The stac
   - [ ] Manager page loads from the CloudFront URL with seeded data
   - [ ] CI smoke step passes (`GET <SiteUrl>/api/shifts/harbourfront-gala` → 200)
   - [ ] `pnpm destroy` removes the stack cleanly, then redeploy
+- [ ] Check the deploy-only #20 / #21 criteria (M4, live updates):
+  - [ ] CI step "Live-update smoke test (AppSync Events)" passes
+  - [ ] A worker action in one browser appears on the manager page in another without a refresh
+  - [ ] The pill shows Live on the deployed site; "Simulate outage" on/off recovers and applies missed changes
+  - [ ] The publish DLQ (`PublishDlqUrl` output) stays empty after a few actions
 
 ## Optional
 

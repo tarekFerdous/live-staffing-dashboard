@@ -4,12 +4,13 @@ import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import { App, ROUTER_FUTURE } from '../App';
+import type { Transport } from '../lib/sync/shiftSync';
 
-export function renderApp(path: string) {
+export function renderApp(path: string, opts: { transport?: Transport } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter initialEntries={[path]} future={ROUTER_FUTURE}>
-      <App queryClient={queryClient} />
+      <App queryClient={queryClient} transport={opts.transport ?? null} />
     </MemoryRouter>,
   );
 }
@@ -40,7 +41,11 @@ export function makeSnapshot(workers?: Worker[], shift: Partial<Snapshot['shift'
       acceptedCount: 0,
       ...shift,
     },
-    workers: workers ?? [worker('amara', 'Amara Okafor'), worker('liam', 'Liam Chen'), worker('sofia', 'Sofia Rossi')],
+    workers: workers ?? [
+      worker('amara', 'Amara Okafor'),
+      worker('liam', 'Liam Chen'),
+      worker('sofia', 'Sofia Rossi'),
+    ],
     seq: 0,
   };
 }

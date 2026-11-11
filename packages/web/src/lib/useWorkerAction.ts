@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { useToast } from '../components/Toast';
 import { ApiError, newIdempotencyKey, postAction, SHIFT_ID } from './api';
+import { useLive } from './live';
 import { snapshotKey } from './useSnapshot';
 
 type Vars = { action: Action; expectedVersion: number; key: string };
@@ -18,6 +19,7 @@ const retryable = (err: unknown) => err instanceof ApiError && (err.status === n
 export function useWorkerAction(worker: Worker, shiftId: string = SHIFT_ID) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const live = useLive();
   // Disabling the button needs a re-render; this blocks a second click that lands before it.
   const inFlight = useRef(false);
 
@@ -26,10 +28,15 @@ export function useWorkerAction(worker: Worker, shiftId: string = SHIFT_ID) {
       postAction(shiftId, worker.id, { action, expectedVersion }, key),
     retry: (failures, err) => failures < 2 && retryable(err),
     retryDelay: (attempt) => 300 * 2 ** attempt,
+    // The response carries the committed change: apply it now rather than waiting for its push.
+    onSuccess: (res) => {
+      if (live.enabled && res.seq) live.ingest(res.seq, res.worker);
+    },
     onError: (err) => toast.show(err.message),
-    // Refetch until live push arrives in M4.
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: snapshotKey(shiftId) });
+    // Without live updates, refetch after every action; with them, only after a failure
+    // (a refusal means this page was behind, and the snapshot is the quickest fix).
+    onSettled: async (_res, err) => {
+      if (!live.enabled || err) await queryClient.invalidateQueries({ queryKey: snapshotKey(shiftId) });
       inFlight.current = false;
     },
   });
