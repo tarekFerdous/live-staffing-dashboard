@@ -27,13 +27,13 @@ export function LiveStatusBar() {
         <span
           data-testid="latency-badge"
           title="Approximate: compares the server's clock with this browser's clock"
-          className="text-xs text-muted tabular-nums"
+          className="text-xs text-muted-on-bg tabular-nums"
         >
           Last update ≈ {Math.round(live.latencyMs)} ms (approx.)
         </span>
       )}
       {live.enabled && (
-        <label className="flex cursor-pointer items-center gap-2 rounded-full bg-secondary py-1 pr-3 pl-1 text-xs font-semibold">
+        <label className="flex cursor-pointer items-center gap-2 rounded-full bg-secondary py-1 pr-3 pl-1 text-xs font-medium">
           <button
             type="button"
             role="switch"
@@ -68,7 +68,7 @@ export function LivePausedNotice() {
       : 'Live updates are paused while we reconnect. Actions are turned off so nothing is sent from an out-of-date screen.';
   return (
     <div id={PAUSED_NOTICE_ID} className={`mt-2 ${GUTTER}`}>
-      <p className="rounded-2xl bg-warn-bg px-4 py-2 text-center text-sm font-medium text-warn-fg">{text}</p>
+      <p className="rounded-2xl bg-warn-bg px-4 py-2 text-center text-sm text-warn-fg">{text}</p>
     </div>
   );
 }

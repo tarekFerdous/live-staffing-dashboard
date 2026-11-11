@@ -2,39 +2,42 @@
 
 /*
  * Design tokens. Every colour on screen comes from here, so light and dark are one switch.
- * The look: a soft blue-grey gradient backdrop, translucent blurred cards with a large radius and
- * a soft shadow instead of borders, near-black text, monochrome actions (black primary, grey pill
- * secondary). Colour is reserved for state: muted red for stops and errors, green for the Live
- * dot, amber while reconnecting.
+ * The look (Hark day): a subtle lavender-periwinkle gradient backdrop, translucent white blurred
+ * cards with a large radius and a soft shadow instead of borders, slate-ink text, slate-ink
+ * primary and selected pills (dark mode's own ink), slate-lavender muted text and low-alpha
+ * slate washes for secondary pills. Light and dark are one periwinkle palette at different times
+ * of day. Colour is reserved for state: muted red for stops and errors, green for the Live dot,
+ * amber while reconnecting.
  * Theme: the system setting by default; <html data-theme="light|dark"> overrides it.
  */
 :root {
   color-scheme: light;
-  --bg-from: #e9eef5;
-  --bg-to: #d9e2ee;
-  --bg: #e4eaf2; /* solid fallback and the colour behind the gradient */
+  --bg-from: #eceef7;
+  --bg-to: #d6daea;
+  --bg: #e1e4f0; /* solid fallback and the colour behind the gradient */
 
   --card: rgb(255 255 255 / 0.62);
-  --card-solid: #f7f9fc; /* where backdrop blur isn't supported */
+  --card-solid: #f6f7fc; /* where backdrop blur isn't supported */
   --card-inner: rgb(255 255 255 / 0.7); /* tiles inside a card */
-  --card-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px rgb(15 23 42 / 0.07);
+  --card-shadow: 0 1px 2px rgb(35 39 80 / 0.05), 0 8px 24px rgb(35 39 80 / 0.08);
   --card-radius: 1.5rem;
   --card-blur: 18px;
 
   --surface: #ffffff;
-  --surface-2: rgb(15 23 42 / 0.05);
-  --border: rgb(15 23 42 / 0.09);
-  --fg: #0f1115;
-  --muted: #5c6370;
-  --track: rgb(15 23 42 / 0.1);
+  --surface-2: rgb(43 48 80 / 0.05);
+  --border: rgb(43 48 80 / 0.1);
+  --fg: #23273f;
+  --muted: #555a78;
+  --muted-on-bg: #555a78; /* muted text straight on the backdrop, not on a card */
+  --track: rgb(43 48 80 / 0.11);
 
-  --primary: #0f1115;
-  --primary-hover: #2a2e36;
+  --primary: #2b3050;
+  --primary-hover: #3b4166;
   --primary-fg: #ffffff;
-  --secondary: rgb(15 23 42 / 0.07);
-  --secondary-hover: rgb(15 23 42 / 0.12);
-  --secondary-fg: #0f1115;
-  --focus: #0f1115;
+  --secondary: rgb(43 48 80 / 0.07);
+  --secondary-hover: rgb(43 48 80 / 0.12);
+  --secondary-fg: #23273f;
+  --focus: #2b3050;
 
   --bad: #b4474f;
   --bad-solid-fg: #ffffff; /* text on a solid red button */
@@ -44,10 +47,10 @@
   --warn: #c98a12;
   --warn-bg: #f8edd5;
   --warn-fg: #7a4f00;
-  --neutral-bg: rgb(15 23 42 / 0.06);
-  --neutral-fg: #3a404b;
+  --neutral-bg: rgb(43 48 80 / 0.07);
+  --neutral-fg: #3b4060;
 
-  --toast-bg: #0f1115;
+  --toast-bg: #2b3050;
   --toast-fg: #ffffff;
   --toast-error-bg: #8e2f37;
 
@@ -60,99 +63,106 @@
   --warn-ring: rgb(201 138 18 / 0.45);
 }
 
-/* Dark tokens appear twice: once for the system setting, once for the stored override. */
+/*
+ * Dark is the same design at dusk: a mid-tone slate-periwinkle backdrop, darker slate glass
+ * cards, white text and white selected/primary pills, lavender-grey muted text, light glass
+ * secondary pills. Status tints are brighter so they read on slate.
+ * Dark tokens appear twice: once for the system setting, once for the stored override.
+ */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --bg-from: #0c1424;
-    --bg-to: #111d33;
-    --bg: #0e1729;
-    --card: rgb(30 41 64 / 0.55);
-    --card-solid: #172238;
-    --card-inner: rgb(255 255 255 / 0.05);
-    --card-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.3);
-    --surface: #1a263d;
-    --surface-2: rgb(255 255 255 / 0.06);
-    --border: rgb(255 255 255 / 0.1);
-    --fg: #f1f4f9;
-    --muted: #a3adbd;
-    --track: rgb(255 255 255 / 0.14);
-    --primary: #f6f8fb;
-    --primary-hover: #dfe4ec;
-    --primary-fg: #0c1424;
-    --secondary: rgb(255 255 255 / 0.09);
-    --secondary-hover: rgb(255 255 255 / 0.15);
-    --secondary-fg: #f1f4f9;
-    --focus: #f6f8fb;
-    --bad: #e08a90;
-    --bad-solid-fg: #0c1424;
-    --bad-bg: rgb(224 138 144 / 0.16);
-    --bad-fg: #f0b0b4;
-    --live: #4ade80;
-    --warn: #f0b84a;
-    --warn-bg: rgb(240 184 74 / 0.15);
-    --warn-fg: #f6cf80;
-    --neutral-bg: rgb(255 255 255 / 0.08);
-    --neutral-fg: #d3d9e3;
-    --toast-bg: #f6f8fb;
-    --toast-fg: #0c1424;
-    --toast-error-bg: #f0b0b4;
-    --good-tint: rgb(74 222 128 / 0.1);
-    --good-ring: rgb(74 222 128 / 0.38);
-    --bad-tint: rgb(224 138 144 / 0.12);
-    --bad-ring: rgb(224 138 144 / 0.42);
-    --warn-tint: rgb(240 184 74 / 0.12);
-    --warn-ring: rgb(240 184 74 / 0.42);
+    --bg-from: #636a8c;
+    --bg-to: #4c5374;
+    --bg: #575e80;
+    --card: rgb(36 40 66 / 0.58);
+    --card-solid: #3a3f5c;
+    --card-inner: rgb(255 255 255 / 0.07);
+    --card-shadow: 0 1px 2px rgb(22 25 48 / 0.16), 0 8px 24px rgb(22 25 48 / 0.22);
+    --surface: #444a69;
+    --surface-2: rgb(255 255 255 / 0.07);
+    --border: rgb(255 255 255 / 0.14);
+    --fg: #ffffff;
+    --muted: #cfd3e8;
+    --muted-on-bg: #eef0f8;
+    --track: rgb(255 255 255 / 0.2);
+    --primary: #ffffff;
+    --primary-hover: #e4e7f1;
+    --primary-fg: #2b3050;
+    --secondary: rgb(255 255 255 / 0.12);
+    --secondary-hover: rgb(255 255 255 / 0.2);
+    --secondary-fg: #ffffff;
+    --focus: #ffffff;
+    --bad: #ff9aa2;
+    --bad-solid-fg: #2b3050;
+    --bad-bg: rgb(255 154 162 / 0.16);
+    --bad-fg: #ffd0d4;
+    --live: #5ee49a;
+    --warn: #ffcf5c;
+    --warn-bg: #f7dc94;
+    --warn-fg: #4a3500;
+    --neutral-bg: rgb(255 255 255 / 0.1);
+    --neutral-fg: #e6e8f3;
+    --toast-bg: #ffffff;
+    --toast-fg: #2b3050;
+    --toast-error-bg: #ffb3ba;
+    --good-tint: rgb(94 228 154 / 0.16);
+    --good-ring: rgb(94 228 154 / 0.75);
+    --bad-tint: rgb(255 154 162 / 0.16);
+    --bad-ring: rgb(255 154 162 / 0.75);
+    --warn-tint: rgb(255 196 40 / 0.2);
+    --warn-ring: rgb(255 207 92 / 0.9);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg-from: #0c1424;
-  --bg-to: #111d33;
-  --bg: #0e1729;
-  --card: rgb(30 41 64 / 0.55);
-  --card-solid: #172238;
-  --card-inner: rgb(255 255 255 / 0.05);
-  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.3);
-  --surface: #1a263d;
-  --surface-2: rgb(255 255 255 / 0.06);
-  --border: rgb(255 255 255 / 0.1);
-  --fg: #f1f4f9;
-  --muted: #a3adbd;
-  --track: rgb(255 255 255 / 0.14);
-  --primary: #f6f8fb;
-  --primary-hover: #dfe4ec;
-  --primary-fg: #0c1424;
-  --secondary: rgb(255 255 255 / 0.09);
-  --secondary-hover: rgb(255 255 255 / 0.15);
-  --secondary-fg: #f1f4f9;
-  --focus: #f6f8fb;
-  --bad: #e08a90;
-  --bad-solid-fg: #0c1424;
-  --bad-bg: rgb(224 138 144 / 0.16);
-  --bad-fg: #f0b0b4;
-  --live: #4ade80;
-  --warn: #f0b84a;
-  --warn-bg: rgb(240 184 74 / 0.15);
-  --warn-fg: #f6cf80;
-  --neutral-bg: rgb(255 255 255 / 0.08);
-  --neutral-fg: #d3d9e3;
-  --toast-bg: #f6f8fb;
-  --toast-fg: #0c1424;
-  --toast-error-bg: #f0b0b4;
-  --good-tint: rgb(74 222 128 / 0.1);
-  --good-ring: rgb(74 222 128 / 0.38);
-  --bad-tint: rgb(224 138 144 / 0.12);
-  --bad-ring: rgb(224 138 144 / 0.42);
-  --warn-tint: rgb(240 184 74 / 0.12);
-  --warn-ring: rgb(240 184 74 / 0.42);
+  --bg-from: #636a8c;
+  --bg-to: #4c5374;
+  --bg: #575e80;
+  --card: rgb(36 40 66 / 0.58);
+  --card-solid: #3a3f5c;
+  --card-inner: rgb(255 255 255 / 0.07);
+  --card-shadow: 0 1px 2px rgb(22 25 48 / 0.16), 0 8px 24px rgb(22 25 48 / 0.22);
+  --surface: #444a69;
+  --surface-2: rgb(255 255 255 / 0.07);
+  --border: rgb(255 255 255 / 0.14);
+  --fg: #ffffff;
+  --muted: #cfd3e8;
+  --muted-on-bg: #eef0f8;
+  --track: rgb(255 255 255 / 0.2);
+  --primary: #ffffff;
+  --primary-hover: #e4e7f1;
+  --primary-fg: #2b3050;
+  --secondary: rgb(255 255 255 / 0.12);
+  --secondary-hover: rgb(255 255 255 / 0.2);
+  --secondary-fg: #ffffff;
+  --focus: #ffffff;
+  --bad: #ff9aa2;
+  --bad-solid-fg: #2b3050;
+  --bad-bg: rgb(255 154 162 / 0.16);
+  --bad-fg: #ffd0d4;
+  --live: #5ee49a;
+  --warn: #ffcf5c;
+  --warn-bg: #f7dc94;
+  --warn-fg: #4a3500;
+  --neutral-bg: rgb(255 255 255 / 0.1);
+  --neutral-fg: #e6e8f3;
+  --toast-bg: #ffffff;
+  --toast-fg: #2b3050;
+  --toast-error-bg: #ffb3ba;
+  --good-tint: rgb(94 228 154 / 0.16);
+  --good-ring: rgb(94 228 154 / 0.75);
+  --bad-tint: rgb(255 154 162 / 0.16);
+  --bad-ring: rgb(255 154 162 / 0.75);
+  --warn-tint: rgb(255 196 40 / 0.2);
+  --warn-ring: rgb(255 207 92 / 0.9);
 }
 
 /* Exposed to Tailwind as bg-surface, text-muted, bg-primary, … */
 @theme inline {
   --font-sans:
-    'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     sans-serif;
   --color-bg: var(--bg);
   --color-card-inner: var(--card-inner);
@@ -161,6 +171,7 @@
   --color-border: var(--border);
   --color-fg: var(--fg);
   --color-muted: var(--muted);
+  --color-muted-on-bg: var(--muted-on-bg);
   --color-track: var(--track);
   --color-primary: var(--primary);
   --color-primary-fg: var(--primary-fg);
@@ -187,7 +198,6 @@
     background-image: linear-gradient(160deg, var(--bg-from), var(--bg-to));
     color: var(--fg);
     font-family: var(--font-sans);
-    font-feature-settings: 'cv11', 'ss01'; /* Inter's straight-sided digits read better in big numbers */
     overflow-wrap: anywhere;
     -webkit-font-smoothing: antialiased;
   }
@@ -278,7 +288,7 @@
     mask-image: linear-gradient(to bottom, #000 45%, transparent);
   }
 
-  /* Monochrome pill buttons: black primary (white in dark), grey secondary. */
+  /* Pill buttons: slate-ink primary (white in dark), slate-wash secondary. */
   .btn {
     display: inline-flex;
     align-items: center;
@@ -288,7 +298,7 @@
     padding: 0.5rem 1.125rem;
     border-radius: 9999px;
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 500;
     border: 0;
     transition:
       background-color 150ms,
@@ -340,7 +350,7 @@
     border-radius: 9999px;
     padding: 0.25rem 0.75rem;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 500;
     background: var(--secondary);
     color: var(--fg);
   }

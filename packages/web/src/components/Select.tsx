@@ -85,7 +85,7 @@ export function Select({
 
   return (
     <div ref={rootRef} className="relative">
-      <span id={labelId} className="mb-2 block text-sm font-semibold">
+      <span id={labelId} className="mb-2 block text-sm">
         {label}
       </span>
       <div
@@ -130,7 +130,7 @@ export function Select({
             onClick={() => choose(i)}
             className={`flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-sm ${
               i === active ? 'bg-secondary' : ''
-            } ${o.value === value ? 'font-semibold' : 'font-medium'}`}
+            } ${o.value === value ? 'font-medium' : ''}`}
           >
             {o.label}
             {o.value === value && (

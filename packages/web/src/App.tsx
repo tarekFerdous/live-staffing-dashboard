@@ -16,10 +16,10 @@ export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 5_000 } } });
 }
 
-// Pill navigation: the active page is a black pill (white in dark mode).
+// Pill navigation: the active page is a black pill (white in dark mode), in Medium.
 const link = ({ isActive }: { isActive: boolean }) =>
-  `rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-    isActive ? 'bg-primary text-primary-fg' : 'text-muted hover:bg-secondary hover:text-fg'
+  `rounded-full px-4 py-1.5 text-sm transition-colors ${
+    isActive ? 'bg-primary font-medium text-primary-fg' : 'text-muted hover:bg-secondary hover:text-fg'
   }`;
 
 function Layout() {
@@ -34,7 +34,7 @@ function Layout() {
       </a>
       <header>
         <div className={`flex flex-wrap items-center gap-x-4 gap-y-3 pt-5 pb-2 ${GUTTER}`}>
-          <span className="flex items-center gap-2 text-base font-bold tracking-tight">
+          <span className="flex items-center gap-2 text-base font-medium tracking-tight">
             <span className="icon-badge h-7 w-7">
               <LiveIcon size={14} />
             </span>

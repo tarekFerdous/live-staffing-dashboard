@@ -1,6 +1,18 @@
 import { useId, type ReactNode } from 'react';
 import type { Tone } from '../lib/tracker';
 
+/** The key value of a summary is its first sentence: Medium, with the rest Regular. */
+function emphasiseLead(summary: string) {
+  const cut = summary.indexOf('. ');
+  const lead = cut < 0 ? summary : summary.slice(0, cut + 1);
+  return (
+    <>
+      <span className="font-medium">{lead}</span>
+      {summary.slice(lead.length)}
+    </>
+  );
+}
+
 /**
  * The shared card shell: a round icon badge and a "Title • Subtitle" header, an optional
  * one-line summary, the body, and an optional footer of full-width pill buttons.
@@ -44,8 +56,8 @@ export function Card({
   const header = (
     <header className={`flex items-center gap-3 ${onMedia ? 'relative p-5 text-white' : ''}`}>
       <span className={onMedia ? 'icon-badge icon-badge-on-media' : 'icon-badge'}>{icon}</span>
-      <div className={`min-w-0 text-sm font-semibold ${onMedia ? 'text-shadow-on-media' : ''}`}>
-        <Heading id={titleId} className="inline text-sm font-semibold">
+      <div className={`min-w-0 text-sm ${onMedia ? 'text-shadow-on-media' : ''}`}>
+        <Heading id={titleId} className="inline text-sm">
           {title}
         </Heading>
         {subtitle && (
@@ -53,7 +65,7 @@ export function Card({
             <span aria-hidden="true" className={`mx-1.5 ${onMedia ? 'text-white/80' : 'text-muted'}`}>
               •
             </span>
-            <span className={`font-medium ${onMedia ? 'text-white/90' : 'text-muted'}`}>{subtitle}</span>
+            <span className={onMedia ? 'text-white/90' : 'text-muted'}>{subtitle}</span>
           </>
         )}
       </div>
@@ -79,7 +91,11 @@ export function Card({
       ) : (
         header
       )}
-      {summary && <p className="mt-3 text-lg leading-snug font-semibold tracking-tight">{summary}</p>}
+      {summary && (
+        <p data-testid="card-summary" className="mt-3 text-lg leading-snug tracking-tight">
+          {typeof summary === 'string' ? emphasiseLead(summary) : summary}
+        </p>
+      )}
       {children && <div className={`mt-4 ${onMedia ? '' : 'flex-1'} ${bodyClassName}`}>{children}</div>}
       {footer && <div className="mt-5 flex flex-col gap-2 [&>*]:w-full">{footer}</div>}
     </section>

@@ -20,7 +20,7 @@ export function ShiftDetails({ shift, className }: { shift: Shift; className?: s
       // Decorative: the card reads the same without it.
       media={<img src={restaurantPhoto} alt="" decoding="async" />}
     >
-      <p data-testid="shift-time" className="text-2xl font-bold tracking-tight tabular-nums">
+      <p data-testid="shift-time" className="text-2xl tracking-tight">
         <span className="whitespace-nowrap">{formatTime(shift.startsAt, tz)}</span>
         <span aria-hidden="true" className="mx-2 text-muted">
           →

@@ -24,9 +24,9 @@ export function ThemeToggle() {
         setPref(next);
         saveThemePreference(next);
       }}
-      className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold transition-colors hover:bg-[var(--secondary-hover)]"
+      className="rounded-full bg-secondary px-3 py-1 text-xs font-medium transition-colors hover:bg-[var(--secondary-hover)]"
     >
-      Theme <span aria-hidden="true">·</span> <span className="font-medium">{LABEL[pref]}</span>
+      Theme <span aria-hidden="true">·</span> <span>{LABEL[pref]}</span>
     </button>
   );
 }

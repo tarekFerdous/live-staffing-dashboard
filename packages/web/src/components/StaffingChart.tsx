@@ -95,9 +95,7 @@ export function StaffingChart({
   return (
     <figure aria-labelledby={captionId} className="mt-5">
       <div className="mb-1 flex items-baseline justify-between text-xs">
-        <span className="font-semibold" data-testid="chart-title">
-          {label} over time
-        </span>
+        <span data-testid="chart-title">{label} over time</span>
         <span className="text-muted">of {required} places</span>
       </div>
       <svg
@@ -142,10 +140,10 @@ export function StaffingChart({
 
         {!empty && (
           <>
-            <text x={LEFT} y={H - 4} className="fill-muted" fontSize={9}>
+            <text x={LEFT} y={H - 4} className="fill-muted tabular-nums" fontSize={9}>
               {formatTime(points[0]!.at, timeZone)}
             </text>
-            <text x={plotRight} y={H - 4} textAnchor="end" className="fill-muted" fontSize={9}>
+            <text x={plotRight} y={H - 4} textAnchor="end" className="fill-muted tabular-nums" fontSize={9}>
               {formatTime(last.at, timeZone)}
             </text>
           </>

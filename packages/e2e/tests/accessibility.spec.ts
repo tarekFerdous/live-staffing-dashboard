@@ -37,15 +37,37 @@ for (const colorScheme of ['light', 'dark'] as const) {
       expect(await manager.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(
         colorScheme === 'dark',
       );
-      // Some state worth checking: an accepted worker, a declined one (red stop).
-      await actionButton(manager, 'Invite', WORKERS.amara).click();
-      await actionButton(manager, 'Invite', WORKERS.sofia).click();
+      // Every tint at once: accepted (green), checked in (amber), declined (red stop).
+      for (const name of Object.values(WORKERS)) await actionButton(manager, 'Invite', name).click();
       await actionButton(workerPage, 'Accept', WORKERS.amara).click();
       await expectWorkerStatus(workerPage, 'Accepted');
+      await openWorker(workerPage, WORKERS.liam);
+      await actionButton(workerPage, 'Accept', WORKERS.liam).click();
+      await actionButton(workerPage, 'Check in', WORKERS.liam).click();
+      await expectWorkerStatus(workerPage, 'Accepted', 'Checked in');
       await openWorker(workerPage, WORKERS.sofia);
       await actionButton(workerPage, 'Decline', WORKERS.sofia).click();
       await expect(tracker(managerWorker(manager, WORKERS.sofia))).toHaveText('Step 2 of 4: Declined');
+      for (const [name, tone] of [
+        [WORKERS.amara, 'good'],
+        [WORKERS.liam, 'warn'],
+        [WORKERS.sofia, 'bad'],
+      ] as const)
+        await expect(managerWorker(manager, name)).toHaveAttribute('data-tone', tone);
       await openWorker(workerPage, WORKERS.amara);
+
+      // An error toast: the server refuses the next action.
+      await workerPage.route('**/workers/*/actions', (route) =>
+        route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ code: 'CONFLICT', message: 'That change was refused.' }),
+        }),
+      );
+      await actionButton(workerPage, 'Check in', WORKERS.amara).click();
+      await expect(workerPage.getByText('That change was refused.')).toBeVisible();
+      await expectNoViolations(workerPage);
+      await workerPage.unroute('**/workers/*/actions');
 
       // The worker picker's menu, open.
       await workerPicker(workerPage).click();

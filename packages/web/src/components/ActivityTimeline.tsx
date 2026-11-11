@@ -69,8 +69,8 @@ export function ActivityTimeline({
                 <time dateTime={e.at} className="w-20 shrink-0 text-muted tabular-nums">
                   {formatTime(e.at, timeZone)}
                 </time>
-                <span className="min-w-0 flex-1 font-medium">{describeEvent(e)}</span>
-                <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted">
+                <span className="min-w-0 flex-1">{describeEvent(e)}</span>
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted">
                   {actor === 'manager' ? 'Manager' : 'Worker'}
                 </span>
               </li>

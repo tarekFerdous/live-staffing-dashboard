@@ -68,7 +68,7 @@ export function ResetDemo() {
         ref={trigger}
         type="button"
         onClick={open}
-        className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold hover:bg-[var(--secondary-hover)]"
+        className="rounded-full bg-secondary px-3 py-1 text-xs font-medium hover:bg-[var(--secondary-hover)]"
       >
         Reset demo
       </button>
@@ -90,7 +90,7 @@ export function ResetDemo() {
           if (e.target === dialog.current) close();
         }}
       >
-        <h2 id={titleId} className="text-lg font-bold tracking-tight">
+        <h2 id={titleId} className="text-lg tracking-tight">
           Reset demo?
         </h2>
         <p id={bodyId} className="mt-2 text-sm text-muted">

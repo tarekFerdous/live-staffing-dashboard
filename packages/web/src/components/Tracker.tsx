@@ -38,15 +38,12 @@ export function Tracker({ worker }: { worker: WorkerState }) {
         className="mt-1.5 grid grid-cols-4 text-center text-[11px] leading-tight text-muted"
       >
         {TRACKER_STEPS.map((s, i) => (
-          <li
-            key={s}
-            className={i < t.step && !(t.stopped && i === t.step - 1) ? 'font-semibold text-fg' : ''}
-          >
+          <li key={s} className={i < t.step && !(t.stopped && i === t.step - 1) ? 'font-medium text-fg' : ''}>
             {s}
           </li>
         ))}
       </ol>
-      <p data-testid="tracker" className={`mt-2 text-xs font-semibold ${t.stopped ? 'text-bad-fg' : ''}`}>
+      <p data-testid="tracker" className={`mt-2 text-xs font-medium ${t.stopped ? 'text-bad-fg' : ''}`}>
         {t.text}
       </p>
     </div>

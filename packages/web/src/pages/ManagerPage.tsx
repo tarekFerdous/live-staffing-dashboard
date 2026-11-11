@@ -97,7 +97,7 @@ export function ManagerPage() {
   const query = useSnapshot();
   return (
     <>
-      <h1 className="mb-4 text-2xl font-bold tracking-tight">Manager dashboard</h1>
+      <h1 className="mb-4 text-2xl tracking-tight">Manager dashboard</h1>
       <QueryState query={query}>{(snapshot) => <Dashboard snapshot={snapshot} />}</QueryState>
     </>
   );

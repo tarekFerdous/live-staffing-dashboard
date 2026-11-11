@@ -247,3 +247,158 @@ test('a card tint fades in about 300 ms, and not at all with reduced motion', as
   expect(await duration(calm)).toBe('0s');
   await ctx.close();
 });
+
+test('both pages use the bundled Geist font', async ({ manager, workerPage }) => {
+  await openManager(manager);
+  await openWorker(workerPage, WORKERS.amara);
+  for (const page of [manager, workerPage]) {
+    const font = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return {
+        family: getComputedStyle(document.body).fontFamily,
+        check: document.fonts.check('16px "Geist Variable"'),
+        loaded: Array.from(document.fonts as unknown as Iterable<FontFace>).some(
+          (f) => f.family.replace(/"/g, '') === 'Geist Variable' && f.status === 'loaded',
+        ),
+      };
+    });
+    expect(font.family).toMatch(/^"?Geist Variable"?,/);
+    expect(font.check).toBe(true);
+    expect(font.loaded).toBe(true);
+  }
+});
+
+/**
+ * The backdrop gradient's stops (WCAG luminance and HSL saturation), the cards' alpha and border,
+ * and the active nav tab's and first primary button's background colours.
+ */
+const look = (page: Page) =>
+  page.evaluate(() => {
+    const lum = (rgb: number[]) =>
+      rgb
+        .map((v) => v / 255)
+        .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+        .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+    const sat = (rgb: number[]) => {
+      const [max, min] = [Math.max(...rgb) / 255, Math.min(...rgb) / 255];
+      const l = (max + min) / 2;
+      return max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+    };
+    const rgbOf = (el: Element | null) =>
+      el
+        ? /rgba?\((\d+), (\d+), (\d+)/.exec(getComputedStyle(el).backgroundColor)!.slice(1, 4).map(Number)
+        : null;
+    const stops = [
+      ...getComputedStyle(document.body).backgroundImage.matchAll(/rgb\((\d+), (\d+), (\d+)\)/g),
+    ].map((m) => m.slice(1, 4).map(Number));
+    const cards = Array.from(document.querySelectorAll('main .card')).map((el) => {
+      const s = getComputedStyle(el);
+      const alpha = /rgba?\([^)]*,\s*([\d.]+)\)/.exec(s.backgroundColor)?.[1];
+      return {
+        alpha: alpha === undefined ? 1 : Number(alpha),
+        border: s.borderTopWidth,
+        style: s.borderTopStyle,
+      };
+    });
+    const ink = [
+      rgbOf(document.querySelector('nav[aria-label="Main"] [aria-current="page"]')),
+      rgbOf(document.querySelector('main .btn-primary')),
+    ].map((rgb) => (rgb ? { lum: lum(rgb), sat: sat(rgb) } : null));
+    return { backdrop: stops.map(lum), backdropSat: stops.map(sat), cards, ink };
+  });
+
+test('dark mode is Hark dusk: a mid-tone backdrop and borderless glass cards', async ({
+  browser,
+  manager,
+}) => {
+  const expectDusk = async (page: Page) => {
+    const { backdrop, cards } = await look(page);
+    expect(backdrop).toHaveLength(2);
+    for (const l of backdrop) {
+      expect(l).toBeGreaterThan(0.06);
+      expect(l).toBeLessThan(0.3);
+    }
+    expect(cards.length).toBeGreaterThan(3);
+    for (const c of cards) {
+      expect(c.alpha).toBeLessThan(1);
+      expect(c.border === '0px' || c.style === 'none').toBe(true);
+    }
+  };
+
+  // Chosen explicitly (stored preference), with a light OS.
+  await openManager(manager);
+  await manager.evaluate(() => (document.documentElement.dataset.theme = 'dark'));
+  await expectDusk(manager);
+
+  // Followed from a dark OS (System).
+  const ctx = await browser.newContext({ colorScheme: 'dark' });
+  const page = await ctx.newPage();
+  await openManager(page);
+  await expectDusk(page);
+  await ctx.close();
+});
+
+test('light mode is Hark day: a light tinted backdrop, slate-ink primary, borderless glass cards', async ({
+  browser,
+  manager,
+}) => {
+  const expectDay = async (page: Page) => {
+    const { backdrop, backdropSat, cards, ink } = await look(page);
+    expect(backdrop).toHaveLength(2);
+    for (const l of backdrop) expect(l).toBeGreaterThan(0.6);
+    for (const s of backdropSat) expect(s).toBeGreaterThan(0.12);
+    expect(cards.length).toBeGreaterThan(3);
+    for (const c of cards) {
+      expect(c.alpha).toBeLessThan(1);
+      expect(c.border === '0px' || c.style === 'none').toBe(true);
+    }
+    // The active nav tab and a primary button: dark slate ink, tinted, not neutral black.
+    for (const i of ink) {
+      expect(i).not.toBeNull();
+      expect(i!.lum).toBeLessThan(0.06);
+      expect(i!.sat).toBeGreaterThan(0.15);
+    }
+  };
+
+  // Followed from a light OS (System).
+  await openManager(manager);
+  await expectDay(manager);
+
+  // Chosen explicitly (stored preference), with a dark OS.
+  const ctx = await browser.newContext({ colorScheme: 'dark' });
+  const page = await ctx.newPage();
+  await openManager(page);
+  await page.evaluate(() => (document.documentElement.dataset.theme = 'light'));
+  // Buttons and the nav tab fade their background (150 ms); measure once the fades are done.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
+  await expectDay(page);
+  await ctx.close();
+});
+
+test('text uses only Regular (400) and Medium (500)', async ({ manager, workerPage }) => {
+  await openManager(manager);
+  await actionButton(manager, 'Invite', WORKERS.amara).click();
+  await openWorker(workerPage, WORKERS.amara);
+  await actionButton(workerPage, 'Accept', WORKERS.amara).click();
+  await expectManagerStatus(manager, WORKERS.amara, 'Accepted');
+
+  const weight = (l: Locator) => l.evaluate((el) => Number(getComputedStyle(el).fontWeight));
+  for (const page of [manager, workerPage]) {
+    const key = [
+      page.getByTestId('shift-time'),
+      shiftCard(page).getByRole('heading').first(),
+      page.getByRole('button', { name: /^Theme/ }),
+      page.getByRole('navigation', { name: 'Main' }).locator('[aria-current="page"]'),
+    ];
+    if (page === manager) key.push(manager.getByTestId('count-filled'));
+    for (const l of key) expect([400, 500]).toContain(await weight(l));
+
+    const heavy = await page.locator('main').evaluate((main) =>
+      Array.from(main.querySelectorAll('*'))
+        .filter((el) => (el as HTMLElement).offsetParent !== null || el instanceof SVGElement)
+        .filter((el) => Number(getComputedStyle(el).fontWeight) > 500)
+        .map((el) => el.outerHTML.slice(0, 80)),
+    );
+    expect(heavy).toEqual([]);
+  }
+});

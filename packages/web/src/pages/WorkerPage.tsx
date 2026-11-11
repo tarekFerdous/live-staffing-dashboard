@@ -38,7 +38,7 @@ function Profile({ worker: w }: { worker: Worker }) {
   ];
   return (
     <div className="mt-5" data-testid="my-profile">
-      <h3 className="text-2xl leading-tight font-bold tracking-tight">{w.name}</h3>
+      <h3 className="text-2xl leading-tight tracking-tight">{w.name}</h3>
       <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
         {rows.map(([label, value]) => (
           <Fragment key={label}>
@@ -106,7 +106,7 @@ export function WorkerPage() {
   const query = useSnapshot();
   return (
     <>
-      <h1 className="mb-4 text-2xl font-bold tracking-tight">My shift</h1>
+      <h1 className="mb-4 text-2xl tracking-tight">My shift</h1>
       <QueryState query={query}>{(snapshot) => <WorkerView snapshot={snapshot} />}</QueryState>
     </>
   );

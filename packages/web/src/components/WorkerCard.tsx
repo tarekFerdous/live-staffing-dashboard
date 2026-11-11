@@ -53,7 +53,7 @@ export function WorkerCard({
         {details.map(([label, value, testId]) => (
           <div key={label} className="tile px-3 py-2">
             <dt className="text-xs text-muted">{label}</dt>
-            <dd data-testid={testId || undefined} className="font-semibold tabular-nums">
+            <dd data-testid={testId || undefined} className="font-medium tabular-nums">
               {value}
             </dd>
           </div>

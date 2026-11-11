@@ -19,7 +19,7 @@ export function QueryState<T>({
   if (query.isError) {
     return (
       <div role="alert" className="card p-5">
-        <p className="font-semibold text-bad-fg">Couldn't load the shift.</p>
+        <p className="font-medium text-bad-fg">Couldn't load the shift.</p>
         <p className="mt-1 text-sm text-muted">{query.error.message}</p>
         <button
           type="button"

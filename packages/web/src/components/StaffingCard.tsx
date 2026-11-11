@@ -30,10 +30,10 @@ function Tile({
         selected ? 'bg-primary text-primary-fg' : 'tile hover:bg-[var(--secondary-hover)]'
       }`}
     >
-      <span className={`block text-xs font-medium ${selected ? 'opacity-75' : 'text-muted'}`}>{label}</span>
+      <span className={`block text-xs ${selected ? 'opacity-75' : 'text-muted'}`}>{label}</span>
       <span className="mt-1 flex items-baseline gap-1">
         <span
-          className="text-3xl font-bold tracking-tight tabular-nums"
+          className="text-3xl tracking-tight tabular-nums"
           data-testid={`count-${label.toLowerCase().replace(/\s+/g, '-')}`}
         >
           {value}
