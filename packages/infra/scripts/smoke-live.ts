@@ -85,35 +85,50 @@ try {
   await withTimeout(ready, `subscribe to ${channel}`);
   console.log(`Subscribed to ${channel}`);
 
-  const snapRes = await fetch(`${siteUrl}/api/shifts/${shiftId}`);
-  if (!snapRes.ok) throw new Error(`GET snapshot → ${snapRes.status}`);
-  const { workers } = (await snapRes.json()) as { workers: Worker[] };
-  const { worker, action } = pickAction(workers);
+  /** One action through the public API; resolves once its event arrives on the subscription. */
+  async function actAndReceive(): Promise<void> {
+    const snapRes = await fetch(`${siteUrl}/api/shifts/${shiftId}`);
+    if (!snapRes.ok) throw new Error(`GET snapshot → ${snapRes.status}`);
+    const { workers } = (await snapRes.json()) as { workers: Worker[] };
+    const { worker, action } = pickAction(workers);
 
-  const started = Date.now();
-  const res = await fetch(`${siteUrl}/api/shifts/${shiftId}/workers/${worker.id}/actions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'idempotency-key': `smoke-${crypto.randomUUID()}` },
-    body: JSON.stringify({ action, expectedVersion: worker.version }),
-  });
-  const body = (await res.json()) as { seq?: number };
-  if (!res.ok || !body.seq)
-    throw new Error(`POST ${action} for ${worker.id} → ${res.status} ${JSON.stringify(body)}`);
-  console.log(`${action} ${worker.name} committed as seq ${body.seq}`);
+    const started = Date.now();
+    const res = await fetch(`${siteUrl}/api/shifts/${shiftId}/workers/${worker.id}/actions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': `smoke-${crypto.randomUUID()}` },
+      body: JSON.stringify({ action, expectedVersion: worker.version }),
+    });
+    const body = (await res.json()) as { seq?: number };
+    if (!res.ok || !body.seq)
+      throw new Error(`POST ${action} for ${worker.id} → ${res.status} ${JSON.stringify(body)}`);
+    console.log(`${action} ${worker.name} committed as seq ${body.seq}`);
 
-  await withTimeout(
-    new Promise<void>((resolve) => {
-      const check = () => {
-        if (received.some((e) => e.seq === body.seq)) resolve();
-      };
-      onEvent = check;
-      check();
-    }),
-    `event seq ${body.seq} on ${channel}`,
-  );
-  console.log(
-    `Received seq ${body.seq} on the subscription ${Date.now() - started} ms after the request started`,
-  );
+    await withTimeout(
+      new Promise<void>((resolve) => {
+        const check = () => {
+          if (received.some((e) => e.seq === body.seq)) resolve();
+        };
+        onEvent = check;
+        check();
+      }),
+      `event seq ${body.seq} on ${channel}`,
+    );
+    console.log(
+      `Received seq ${body.seq} on the subscription ${Date.now() - started} ms after the request started`,
+    );
+  }
+
+  try {
+    await actAndReceive();
+  } catch (err) {
+    // Right after the stack is first created, the stream's event source mapping can still be
+    // starting; it reads from LATEST, so a change made in that window is never published.
+    // One more action tells that apart from a broken path.
+    console.warn(
+      `${err instanceof Error ? err.message : err}. Retrying once (the stream mapping may still be starting).`,
+    );
+    await actAndReceive();
+  }
 } catch (err) {
   console.error(err instanceof Error ? err.message : err);
   process.exitCode = 1;
