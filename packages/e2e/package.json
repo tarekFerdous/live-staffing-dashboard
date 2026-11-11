@@ -8,6 +8,7 @@
     "measure": "tsx scripts/measure.ts",
     "measure:render": "tsx scripts/render-table.ts",
     "screenshots": "tsx scripts/screenshots.ts",
+    "demo-gif": "tsx scripts/demo-gif.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

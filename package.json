@@ -21,6 +21,7 @@
     "measure": "pnpm --filter @staffing/e2e measure",
     "measure:render": "pnpm --filter @staffing/e2e measure:render",
     "screenshots": "pnpm --filter @staffing/e2e screenshots",
+    "demo-gif": "pnpm --filter @staffing/e2e demo-gif",
     "build:web": "pnpm --filter @staffing/web build",
     "deploy": "pnpm build:web && pnpm --filter @staffing/infra deploy:app",
     "deploy:hotswap": "pnpm build:web && pnpm --filter @staffing/infra deploy:hotswap",

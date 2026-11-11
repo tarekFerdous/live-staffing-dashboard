@@ -32,6 +32,20 @@ async function open(browser: Browser, theme: Theme, viewport: keyof typeof VIEWP
   return ctx.newPage();
 }
 
+/** Fonts loaded and every image decoded: the photos use `decoding="async"` and can paint after load. */
+async function settled(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      Array.from(document.images, (img) =>
+        img.decode().catch(() => {
+          throw new Error(`Image failed to load: ${img.currentSrc || img.src}`);
+        }),
+      ),
+    );
+  });
+}
+
 async function noSideScroll(page: Page, label: string) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   if (overflow > 0) throw new Error(`${label} scrolls sideways by ${overflow} px`);
@@ -67,14 +81,14 @@ async function main() {
       const m = await open(browser, theme, viewport);
       await ui.openManager(m);
       await ui.expectManagerStatus(m, ui.WORKERS.amara, 'Accepted', 'Checked in');
-      await m.evaluate(() => document.fonts.ready);
+      await settled(m);
       await noSideScroll(m, `manager (${theme}, ${viewport})`);
       await m.screenshot({ path: `${OUT}/manager-${theme}-${viewport}.png`, fullPage: true });
 
       const w = await open(browser, theme, viewport);
       await ui.openWorker(w, ui.WORKERS.liam);
       await ui.expectWorkerStatus(w, 'Accepted');
-      await w.evaluate(() => document.fonts.ready);
+      await settled(w);
       await noSideScroll(w, `worker (${theme}, ${viewport})`);
       await w.screenshot({ path: `${OUT}/worker-${theme}-${viewport}.png`, fullPage: true });
       await m.context().close();
