@@ -94,5 +94,8 @@ The stack seeds the shift when it is first created, so a fresh deploy works with
 - **Push to `main`, after checks pass:** assumes `live-staffing-github-deploy` through OIDC (no stored AWS keys),
   deploys `AppStack`, then smoke-tests `GET <SiteUrl>/api/shifts/<id>`. Anything other than a 200 fails the workflow.
 
-The deploy role trusts only `repo:tarekFerdous/live-staffing-dashboard:ref:refs/heads/main`. Its only permission is
-`sts:AssumeRole` on the `cdk-*` roles that `cdk bootstrap` created.
+The deploy role trusts only `main` of this repo. The repo uses GitHub's immutable OIDC subject, so the trusted `sub` is
+`repo:tarekFerdous@55275853/live-staffing-dashboard@1453375278:ref:refs/heads/main` (owner and repo ids included, so a
+renamed or re-created repo with the same name can't match). Its only permission is `sts:AssumeRole` on the `cdk-*`
+roles that `cdk bootstrap` created. Forks deploying to their own account must change `GITHUB_SUBJECT_PREFIX` in
+`packages/infra/lib/config.ts`.

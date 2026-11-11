@@ -1,6 +1,12 @@
 import { Tags, type App } from 'aws-cdk-lib';
 
 export const GITHUB_REPO = 'tarekFerdous/live-staffing-dashboard';
+/**
+ * The repo uses GitHub's immutable OIDC subject, which pins the owner and repo
+ * ids (`owner@ownerId/repo@repoId`). Check it with
+ * `gh api repos/tarekFerdous/live-staffing-dashboard/actions/oidc/customization/sub`.
+ */
+export const GITHUB_SUBJECT_PREFIX = 'repo:tarekFerdous@55275853/live-staffing-dashboard@1453375278';
 export const DEPLOY_ROLE_NAME = 'live-staffing-github-deploy';
 export const APP_STACK_NAME = 'LiveStaffingApp';
 export const BOOTSTRAP_STACK_NAME = 'LiveStaffingBootstrap';

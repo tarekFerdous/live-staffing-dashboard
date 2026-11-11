@@ -2,7 +2,7 @@ import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
 import { CfnBudget } from 'aws-cdk-lib/aws-budgets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
-import { DEPLOY_ROLE_NAME, GITHUB_REPO } from './config';
+import { DEPLOY_ROLE_NAME, GITHUB_REPO, GITHUB_SUBJECT_PREFIX } from './config';
 
 const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
 export const BUDGET_LIMIT_USD = 1;
@@ -10,6 +10,8 @@ export const BUDGET_LIMIT_USD = 1;
 export type BootstrapStackProps = StackProps & {
   budgetAlertEmail: string;
   githubRepo?: string;
+  /** OIDC `sub` prefix for the repo (immutable form by default). */
+  githubSubjectPrefix?: string;
   /** Reuse an OIDC provider that already exists in the account (only one per URL is allowed). */
   existingOidcProviderArn?: string;
 };
@@ -38,7 +40,7 @@ export class BootstrapStack extends Stack {
       assumedBy: new iam.WebIdentityPrincipal(providerArn, {
         StringEquals: {
           [`${GITHUB_OIDC_HOST}:aud`]: 'sts.amazonaws.com',
-          [`${GITHUB_OIDC_HOST}:sub`]: `repo:${repo}:ref:refs/heads/main`,
+          [`${GITHUB_OIDC_HOST}:sub`]: `${props.githubSubjectPrefix ?? GITHUB_SUBJECT_PREFIX}:ref:refs/heads/main`,
         },
       }),
       // CI holds no rights of its own: it can only step into the roles `cdk bootstrap` created.

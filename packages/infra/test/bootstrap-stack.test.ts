@@ -25,7 +25,9 @@ describe('BootstrapStack', () => {
     expect(statements[0].Condition).toEqual({
       StringEquals: {
         'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
-        'token.actions.githubusercontent.com:sub': 'repo:tarekFerdous/live-staffing-dashboard:ref:refs/heads/main',
+        // GitHub's immutable subject for this repo (owner id 55275853, repo id 1453375278).
+        'token.actions.githubusercontent.com:sub':
+          'repo:tarekFerdous@55275853/live-staffing-dashboard@1453375278:ref:refs/heads/main',
       },
     });
     t.hasResourceProperties('AWS::IAM::OIDCProvider', {
