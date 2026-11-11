@@ -1,5 +1,6 @@
-import type { Snapshot } from '@staffing/domain';
+import { canApply, type Participation, type Snapshot } from '@staffing/domain';
 import { useState } from 'react';
+import { ActionButtons } from '../components/ActionButtons';
 import { QueryState } from '../components/QueryState';
 import { ShiftDetails } from '../components/ShiftDetails';
 import { AttendanceBadge, ParticipationBadge } from '../components/StatusBadge';
@@ -8,6 +9,17 @@ import { formatTime } from '../lib/time';
 import { useSnapshot } from '../lib/useSnapshot';
 
 export const WORKER_STORAGE_KEY = 'live-staffing.workerId';
+
+// Check-in and check-out buttons arrive with the attendance milestone (M3).
+const WORKER_ACTIONS = ['accept', 'decline', 'cancel'] as const;
+
+const NO_ACTION_HINT: Record<Participation, string> = {
+  uninvited: "You haven't been invited to this shift yet.",
+  invited: '',
+  accepted: "You're on this shift.",
+  declined: 'You declined this shift. The manager can invite you again.',
+  cancelled: '',
+};
 
 function WorkerView({ snapshot }: { snapshot: Snapshot }) {
   const { shift, workers } = snapshot;
@@ -71,6 +83,13 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
               </>
             )}
           </dl>
+          <div className="mt-4">
+            {WORKER_ACTIONS.some((a) => canApply(me, a)) ? (
+              <ActionButtons key={me.id} worker={me} actions={WORKER_ACTIONS} />
+            ) : (
+              <p className="text-sm text-slate-600">{NO_ACTION_HINT[me.participation]}</p>
+            )}
+          </div>
         </section>
       ) : (
         <p className="text-slate-600">Choose your name to see your status.</p>

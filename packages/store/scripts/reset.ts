@@ -8,7 +8,17 @@ import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-clo
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { fromIni } from '@aws-sdk/credential-providers';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { createClients, createShiftStore, ensureTable, LOCAL_ENDPOINT, LOCAL_TABLE, SEED } from '../src';
+import {
+  createClients,
+  createShiftStore,
+  ensureTable,
+  idempotencyTableDefinition,
+  LOCAL_ENDPOINT,
+  LOCAL_IDEMPOTENCY_TABLE,
+  LOCAL_TABLE,
+  SEED,
+  tableDefinition,
+} from '../src';
 
 const APP_STACK_NAME = 'LiveStaffingApp';
 const REGION = process.env.AWS_REGION ?? 'ca-central-1';
@@ -30,7 +40,8 @@ async function localTable() {
   const tableName = process.env.TABLE_NAME ?? LOCAL_TABLE;
   const { client, doc } = createClients({ endpoint });
   try {
-    await ensureTable(client, tableName);
+    await ensureTable(client, tableDefinition(tableName));
+    await ensureTable(client, idempotencyTableDefinition(process.env.IDEMPOTENCY_TABLE ?? LOCAL_IDEMPOTENCY_TABLE));
   } catch (err) {
     throw new Error(`Cannot reach DynamoDB Local at ${endpoint}. Run \`pnpm db:up\` first.`, { cause: err });
   }

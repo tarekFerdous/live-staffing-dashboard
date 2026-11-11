@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
+import { ToastProvider } from './components/Toast';
 import { ManagerPage } from './pages/ManagerPage';
 import { WorkerPage } from './pages/WorkerPage';
 
@@ -18,8 +19,12 @@ function Layout() {
       <header className="border-b border-slate-200 bg-white">
         <nav aria-label="Main" className="mx-auto flex max-w-4xl items-center gap-2 px-4 py-3">
           <span className="mr-auto font-semibold">Live Staffing</span>
-          <NavLink to="/manager" className={link}>Manager</NavLink>
-          <NavLink to="/worker" className={link}>Worker</NavLink>
+          <NavLink to="/manager" className={link}>
+            Manager
+          </NavLink>
+          <NavLink to="/worker" className={link}>
+            Worker
+          </NavLink>
         </nav>
       </header>
       <main className="mx-auto max-w-4xl px-4 py-6">
@@ -32,13 +37,15 @@ function Layout() {
 export function App({ queryClient }: { queryClient: QueryClient }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/manager" element={<ManagerPage />} />
-          <Route path="/worker" element={<WorkerPage />} />
-          <Route path="*" element={<Navigate to="/manager" replace />} />
-        </Route>
-      </Routes>
+      <ToastProvider>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/manager" element={<ManagerPage />} />
+            <Route path="/worker" element={<WorkerPage />} />
+            <Route path="*" element={<Navigate to="/manager" replace />} />
+          </Route>
+        </Routes>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

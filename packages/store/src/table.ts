@@ -12,6 +12,20 @@ export const PROVISIONED_THROUGHPUT = { ReadCapacityUnits: 5, WriteCapacityUnits
 
 export const LOCAL_ENDPOINT = 'http://localhost:8000';
 export const LOCAL_TABLE = 'live-staffing-local';
+export const LOCAL_IDEMPOTENCY_TABLE = 'live-staffing-local-idempotency';
+
+/** Small provisioned capacity for the Powertools idempotency records (key `id`, TTL `expiration`). */
+export const IDEMPOTENCY_THROUGHPUT = { ReadCapacityUnits: 3, WriteCapacityUnits: 3 } as const;
+
+export function idempotencyTableDefinition(tableName: string): CreateTableCommandInput {
+  return {
+    TableName: tableName,
+    AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    BillingMode: 'PROVISIONED',
+    ProvisionedThroughput: { ...IDEMPOTENCY_THROUGHPUT },
+  };
+}
 
 export function tableDefinition(tableName: string): CreateTableCommandInput {
   return {
@@ -31,12 +45,12 @@ export function tableDefinition(tableName: string): CreateTableCommandInput {
 }
 
 /** Creates the table if it does not exist yet (DynamoDB Local / tests). */
-export async function ensureTable(client: DynamoDBClient, tableName: string): Promise<void> {
+export async function ensureTable(client: DynamoDBClient, definition: CreateTableCommandInput): Promise<void> {
   try {
-    await client.send(new DescribeTableCommand({ TableName: tableName }));
+    await client.send(new DescribeTableCommand({ TableName: definition.TableName }));
   } catch (err) {
     if (!(err instanceof ResourceNotFoundException)) throw err;
-    await client.send(new CreateTableCommand(tableDefinition(tableName)));
+    await client.send(new CreateTableCommand(definition));
   }
 }
 

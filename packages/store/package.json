@@ -17,6 +17,7 @@
     "@aws-sdk/client-dynamodb": "^3.716.0",
     "@aws-sdk/credential-providers": "^3.716.0",
     "@aws-sdk/lib-dynamodb": "^3.716.0",
+    "@aws-sdk/util-dynamodb": "^3.996.9",
     "@staffing/domain": "workspace:*"
   },
   "devDependencies": {

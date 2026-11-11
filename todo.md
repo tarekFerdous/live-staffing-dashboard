@@ -25,5 +25,6 @@ The rest works: CI checks pass and GitHub signs in to AWS through OIDC. The stac
       and set it once the account is verified.
 - [ ] Bump GitHub Actions off the deprecated Node 20 runtime (checkout, setup-node, pnpm/action-setup,
       configure-aws-credentials).
-- [ ] PRD #3: decide whether re-accepting after a cancel may overwrite `respondedAt`.
-      This conflicts with the "timestamps never change once set" rule.
+- [x] PRD #3: decide whether re-accepting after a cancel may overwrite `respondedAt`.
+      Decided in M2: no. Timestamps are written with `if_not_exists`, so a re-invite keeps the first `invitedAt`
+      and a re-accept keeps the first `respondedAt`.

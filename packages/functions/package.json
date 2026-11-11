@@ -12,6 +12,9 @@
     "dev": "tsx watch src/local/server.ts"
   },
   "dependencies": {
+    "@aws-lambda-powertools/idempotency": "^2.36.0",
+    "@aws-sdk/client-dynamodb": "^3.1166.0",
+    "@aws-sdk/lib-dynamodb": "^3.1166.0",
     "@staffing/domain": "workspace:*",
     "@staffing/store": "workspace:*"
   },

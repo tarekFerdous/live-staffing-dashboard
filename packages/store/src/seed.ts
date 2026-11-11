@@ -26,7 +26,12 @@ export const SEED: SeedData = {
   ],
 };
 
-/** The exact DynamoDB items a freshly reset shift partition holds. */
+/**
+ * The exact DynamoDB items a freshly reset shift partition holds.
+ *
+ * Unset timestamps are left out rather than stored as NULL: the write path fills
+ * them with `if_not_exists`, which treats a NULL attribute as already set.
+ */
 export function seedItems(seed: SeedData = SEED): Record<string, unknown>[] {
   const pk = shiftPk(seed.shift.id);
   return [
@@ -39,10 +44,6 @@ export function seedItems(seed: SeedData = SEED): Record<string, unknown>[] {
       name: w.name,
       participation: 'uninvited',
       attendance: 'not_started',
-      invitedAt: null,
-      respondedAt: null,
-      checkedInAt: null,
-      checkedOutAt: null,
       version: 0,
     })),
   ];

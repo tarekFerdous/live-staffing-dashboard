@@ -42,9 +42,21 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.5
+      fast-check:
+        specifier: ^3.23.2
+        version: 3.23.2
 
   packages/functions:
     dependencies:
+      '@aws-lambda-powertools/idempotency':
+        specifier: ^2.36.0
+        version: 2.36.0(@aws-sdk/client-dynamodb@3.1166.0)(@aws-sdk/lib-dynamodb@3.1166.0(@aws-sdk/client-dynamodb@3.1166.0))
+      '@aws-sdk/client-dynamodb':
+        specifier: ^3.1166.0
+        version: 3.1166.0
+      '@aws-sdk/lib-dynamodb':
+        specifier: ^3.1166.0
+        version: 3.1166.0(@aws-sdk/client-dynamodb@3.1166.0)
       '@staffing/domain':
         specifier: workspace:*
         version: link:../domain
@@ -104,6 +116,9 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: ^3.716.0
         version: 3.1166.0(@aws-sdk/client-dynamodb@3.1166.0)
+      '@aws-sdk/util-dynamodb':
+        specifier: ^3.996.9
+        version: 3.996.9(@aws-sdk/client-dynamodb@3.1166.0)
       '@staffing/domain':
         specifier: workspace:*
         version: link:../domain
@@ -135,6 +150,9 @@ importers:
       react-router-dom:
         specifier: ^6.28.0
         version: 6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.0.0
@@ -190,6 +208,32 @@ packages:
     bundledDependencies:
       - jsonschema
       - semver
+
+  '@aws-lambda-powertools/commons@2.36.0':
+    resolution: {integrity: sha512-rYkMu22qpi9wVWCcj51qMj2eKIFyxzpG5Rsasckjq6MPNzafLk/0G/VhFUY536gjWsgwVKZDuM3jMOsdVJFChw==}
+
+  '@aws-lambda-powertools/idempotency@2.36.0':
+    resolution: {integrity: sha512-TRL5Jcg+ufrnrAPqWJcsNRbBWTN+TJEXEg11jDD4b2hlVA8Jp3zE09o2p8sl7tmd+qJUMNlWguSyslWP/GYBSg==}
+    peerDependencies:
+      '@aws-sdk/client-dynamodb': '>=3.x'
+      '@aws-sdk/lib-dynamodb': '>=3.x'
+      '@middy/core': 4.x || 5.x || 6.x || 7.x
+      '@redis/client': ^6.3.0
+      '@valkey/valkey-glide': ^2.5.3
+    peerDependenciesMeta:
+      '@aws-sdk/client-dynamodb':
+        optional: true
+      '@aws-sdk/lib-dynamodb':
+        optional: true
+      '@middy/core':
+        optional: true
+      '@redis/client':
+        optional: true
+      '@valkey/valkey-glide':
+        optional: true
+
+  '@aws-lambda-powertools/jmespath@2.36.0':
+    resolution: {integrity: sha512-Zs0gZDamR59Yf5Hf2B3p5QPXeR8/Z7yjSHkU8C3Oc3xpISJIltZCZZ9VLNCzn6EQWegPPnIR/m7oDS+8hmRzsQ==}
 
   '@aws-sdk/client-cloudformation@3.1166.0':
     resolution: {integrity: sha512-gfmkO9QHu1iyFrWcg2FVcyJFUVRW0Kses8jEmVr5fwxhMVouCzSOKQxy7If/kWIVTm0hpg5lBe13ZcryjtsMkQ==}
@@ -1793,6 +1837,10 @@ packages:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
 
+  fast-check@3.23.2:
+    resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
+    engines: {node: '>=8.0.0'}
+
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
@@ -2311,6 +2359,9 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
+  pure-rand@6.1.0:
+    resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
+
   react-dom@18.3.1:
     resolution: {integrity: sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw==}
     peerDependencies:
@@ -2803,6 +2854,22 @@ snapshots:
   '@aws-cdk/asset-node-proxy-agent-v6@2.1.3': {}
 
   '@aws-cdk/cloud-assembly-schema@55.4.0': {}
+
+  '@aws-lambda-powertools/commons@2.36.0':
+    dependencies:
+      '@aws/lambda-invoke-store': 0.3.0
+
+  '@aws-lambda-powertools/idempotency@2.36.0(@aws-sdk/client-dynamodb@3.1166.0)(@aws-sdk/lib-dynamodb@3.1166.0(@aws-sdk/client-dynamodb@3.1166.0))':
+    dependencies:
+      '@aws-lambda-powertools/commons': 2.36.0
+      '@aws-lambda-powertools/jmespath': 2.36.0
+    optionalDependencies:
+      '@aws-sdk/client-dynamodb': 3.1166.0
+      '@aws-sdk/lib-dynamodb': 3.1166.0(@aws-sdk/client-dynamodb@3.1166.0)
+
+  '@aws-lambda-powertools/jmespath@2.36.0':
+    dependencies:
+      '@aws-lambda-powertools/commons': 2.36.0
 
   '@aws-sdk/client-cloudformation@3.1166.0':
     dependencies:
@@ -4409,6 +4476,10 @@ snapshots:
 
   expect-type@1.4.0: {}
 
+  fast-check@3.23.2:
+    dependencies:
+      pure-rand: 6.1.0
+
   fast-deep-equal@3.1.3: {}
 
   fast-fifo@1.3.2: {}
@@ -4870,6 +4941,8 @@ snapshots:
       once: 1.4.0
 
   punycode@2.3.1: {}
+
+  pure-rand@6.1.0: {}
 
   react-dom@18.3.1(react@18.3.1):
     dependencies:

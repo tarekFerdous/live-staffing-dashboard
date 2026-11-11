@@ -58,10 +58,7 @@ describe('GET /api/shifts/{shiftId}', () => {
   });
 
   it('returns 500 with a readable message when the store fails', async () => {
-    const broken: ShiftStore = {
-      getSnapshot: () => Promise.reject(new Error('boom')),
-      resetShift: () => Promise.resolve(),
-    };
+    const broken = { ...store, getSnapshot: () => Promise.reject(new Error('boom')) } satisfies ShiftStore;
     const res = await makeGetShiftHandler(broken)(get('x'));
     expect(res.statusCode).toBe(500);
     expect(JSON.parse(res.body).message).toMatch(/try again/);

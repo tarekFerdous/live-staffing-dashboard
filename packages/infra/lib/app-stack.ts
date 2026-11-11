@@ -13,7 +13,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { seedItems, SEED } from '@staffing/store';
+import { IDEMPOTENCY_THROUGHPUT, seedItems, SEED } from '@staffing/store';
 import type { Construct } from 'constructs';
 
 const REPO_ROOT = join(import.meta.dirname, '../../..');
@@ -64,11 +64,33 @@ export class AppStack extends Stack {
     const getShift = this.fn('GetShift', 'getShift.ts', { TABLE_NAME: table.tableName });
     table.grantReadData(getShift);
 
+    // Powertools idempotency records: one per Idempotency-Key, expired by TTL after an hour.
+    const idempotencyTable = new dynamodb.Table(this, 'IdempotencyTable', {
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      readCapacity: IDEMPOTENCY_THROUGHPUT.ReadCapacityUnits,
+      writeCapacity: IDEMPOTENCY_THROUGHPUT.WriteCapacityUnits,
+      timeToLiveAttribute: 'expiration',
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    const postAction = this.fn('PostAction', 'postAction.ts', {
+      TABLE_NAME: table.tableName,
+      IDEMPOTENCY_TABLE: idempotencyTable.tableName,
+    });
+    table.grantReadWriteData(postAction);
+    idempotencyTable.grantReadWriteData(postAction);
+
     const api = new apigw.HttpApi(this, 'HttpApi', { apiName: 'live-staffing' });
     api.addRoutes({
       path: '/api/shifts/{shiftId}',
       methods: [apigw.HttpMethod.GET],
       integration: new HttpLambdaIntegration('GetShiftIntegration', getShift),
+    });
+    api.addRoutes({
+      path: '/api/shifts/{shiftId}/workers/{workerId}/actions',
+      methods: [apigw.HttpMethod.POST],
+      integration: new HttpLambdaIntegration('PostActionIntegration', postAction),
     });
 
     // ── Site + CDN (one origin for site and API: no CORS) ───────────────────

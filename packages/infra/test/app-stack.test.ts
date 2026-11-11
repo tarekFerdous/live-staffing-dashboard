@@ -49,8 +49,32 @@ describe('AppStack', () => {
     expect(s3Origin.OriginAccessControlId).toBeDefined();
   });
 
-  it('serves the read route from the HTTP API', () => {
+  it('serves the read and action routes from the HTTP API', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /api/shifts/{shiftId}' });
+    t.hasResourceProperties('AWS::ApiGatewayV2::Route', {
+      RouteKey: 'POST /api/shifts/{shiftId}/workers/{workerId}/actions',
+    });
+  });
+
+  it('has a small provisioned idempotency table with a TTL, wired to the action Lambda', () => {
+    t.hasResourceProperties('AWS::DynamoDB::Table', {
+      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+      ProvisionedThroughput: { ReadCapacityUnits: 3, WriteCapacityUnits: 3 },
+      TimeToLiveSpecification: { AttributeName: 'expiration', Enabled: true },
+    });
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: { TABLE_NAME: Match.anyValue(), IDEMPOTENCY_TABLE: Match.anyValue() },
+      },
+    });
+  });
+
+  it('keeps every table inside the always-free 25 RCU / 25 WCU', () => {
+    const tables = Object.values(t.findResources('AWS::DynamoDB::Table'));
+    const sum = (k: 'ReadCapacityUnits' | 'WriteCapacityUnits') =>
+      tables.reduce((n, tb) => n + tb.Properties.ProvisionedThroughput[k], 0);
+    expect(sum('ReadCapacityUnits')).toBeLessThanOrEqual(25);
+    expect(sum('WriteCapacityUnits')).toBeLessThanOrEqual(25);
   });
 
   it('runs Lambdas on Node 22 arm64 with the table name', () => {

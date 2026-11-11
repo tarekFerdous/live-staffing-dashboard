@@ -2,7 +2,13 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 /** Loading, error-with-retry, or the loaded content. */
-export function QueryState<T>({ query, children }: { query: UseQueryResult<T>; children: (data: T) => ReactNode }) {
+export function QueryState<T>({
+  query,
+  children,
+}: {
+  query: UseQueryResult<T>;
+  children: (data: T) => ReactNode;
+}) {
   if (query.isPending) return <p className="text-slate-500">Loading shift…</p>;
   if (query.isError) {
     return (

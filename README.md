@@ -22,11 +22,45 @@ One partition per shift (`PK = SHIFT#<id>`):
 | --- | --- |
 | `META` | title, location, startsAt/endsAt (UTC), timezone (IANA), required, `seq`, `acceptedCount` |
 | `WORKER#<id>` | name, participation, attendance, timestamps, `version` |
-| `EVT#<seq>` | event log (from M2) |
+| `EVT#<seq>` | append-only event log: `{ seq, type, workerId, actor, row, at }` with the full new worker row |
 
 Sort keys order as `EVT#…` < `META` < `WORKER#…`, so the snapshot is a single Query with `SK >= "META"`.
 It never reads the event log. (The PRD's `SK < "EVT#"` would match nothing, because `META` and `WORKER#` sort after `EVT#`.)
 Counts are never stored for display: the client derives them from the worker rows with `deriveCounts`.
+
+### Actions (write path)
+
+`POST /api/shifts/{shiftId}/workers/{workerId}/actions` with body `{ action, expectedVersion? }` and an
+`Idempotency-Key` header. The actions are `invite` (manager), `accept`, `decline` and `cancel` (worker). `check_in` and
+`check_out` follow the same path and get their UI in M3.
+
+Each action is one read of META and the worker row, followed by a single `TransactWriteItems`:
+
+1. **Worker row:** updated only from an allowed from-state and the version that was read. It gets `version + 1`, and
+   its timestamp is set with `if_not_exists`, so a timestamp is never overwritten.
+2. **META:** `seq = seq + 1`, only if `seq` still has the value that was read. `accept` also requires
+   `acceptedCount < required` and adds 1; `cancel` subtracts 1.
+3. **Event:** puts `EVT#<seq>` with the full new row.
+
+If another write got in first, the Lambda re-reads and decides again, up to 3 retries with jittered backoff.
+
+| Outcome | Response |
+| --- | --- |
+| Applied | `200 { worker, seq }` |
+| Already in the target state (double click, lost response) | `200 { worker }` with the stored row, no new event |
+| Stale `expectedVersion` | `409 VERSION_CONFLICT` with `current` |
+| Not allowed from the current state | `409 INVALID_TRANSITION` with `current` and a readable reason |
+| No free place | `409 SHIFT_FULL`, "No places left" |
+| Malformed body or missing key | `422` (key not recorded) |
+| Same key, different body | `422 IDEMPOTENCY_KEY_REUSED` |
+
+Idempotency uses Powertools for AWS Lambda, keyed on the `Idempotency-Key` header plus the path. Records live in their
+own table (provisioned 3/3, 1-hour TTL). A repeated key returns the byte-identical first response. The web client makes
+one key per click and reuses it on its automatic retries.
+
+The per-shift `seq` serializes all writes to one shift. That is fine for a handful of people acting on one shift. It
+would stop scaling at sustained concurrent writes to the same shift (roughly tens per second), where retries pile up.
+At that point, guard capacity and order events per worker instead.
 
 ## Local development
 
@@ -35,7 +69,7 @@ Requirements: Node 22, pnpm 10, Docker.
 ```sh
 pnpm install
 pnpm db:up        # DynamoDB Local on :8000
-pnpm reset        # creates the table and seeds one shift + three Uninvited workers
+pnpm reset        # creates the tables and seeds one shift + three Uninvited workers
 pnpm dev          # API on :3001, web on http://localhost:5173 (proxies /api)
 ```
 

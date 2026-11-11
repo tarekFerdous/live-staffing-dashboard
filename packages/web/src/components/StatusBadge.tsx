@@ -1,4 +1,9 @@
-import { ATTENDANCE_LABELS, PARTICIPATION_LABELS, type Attendance, type Participation } from '@staffing/domain';
+import {
+  ATTENDANCE_LABELS,
+  PARTICIPATION_LABELS,
+  type Attendance,
+  type Participation,
+} from '@staffing/domain';
 
 const PARTICIPATION_STYLE: Record<Participation, string> = {
   uninvited: 'bg-slate-100 text-slate-700',

@@ -10,7 +10,9 @@ describe('manager page', () => {
     const fetch = stubFetch(jsonResponse(200, makeSnapshot()));
     renderApp('/manager');
 
-    expect(await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' }),
+    ).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith('/api/shifts/harbourfront-gala', expect.anything());
     expect(screen.getByText('Harbourfront Centre')).toBeInTheDocument();
 
@@ -29,8 +31,17 @@ describe('manager page', () => {
   it('derives counts from the rows, ignoring the server acceptedCount', async () => {
     const snapshot = makeSnapshot(
       [
-        worker('a', 'A', { participation: 'accepted', attendance: 'checked_in', checkedInAt: '2026-12-12T22:05:00.000Z' }),
-        worker('b', 'B', { participation: 'accepted', attendance: 'checked_out', checkedInAt: '2026-12-12T22:01:00.000Z', checkedOutAt: '2026-12-13T03:30:00.000Z' }),
+        worker('a', 'A', {
+          participation: 'accepted',
+          attendance: 'checked_in',
+          checkedInAt: '2026-12-12T22:05:00.000Z',
+        }),
+        worker('b', 'B', {
+          participation: 'accepted',
+          attendance: 'checked_out',
+          checkedInAt: '2026-12-12T22:01:00.000Z',
+          checkedOutAt: '2026-12-13T03:30:00.000Z',
+        }),
         worker('c', 'C', { participation: 'declined' }),
       ],
       { acceptedCount: 0 }, // deliberately wrong: the page must not trust it
@@ -71,12 +82,16 @@ describe('manager page', () => {
     expect(alert).toHaveTextContent("Can't reach the server");
     await userEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
 
-    expect(await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' }),
+    ).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("shows the server's message for an unknown shift", async () => {
-    stubFetch(jsonResponse(404, { code: 'SHIFT_NOT_FOUND', message: 'Shift "harbourfront-gala" was not found.' }));
+    stubFetch(
+      jsonResponse(404, { code: 'SHIFT_NOT_FOUND', message: 'Shift "harbourfront-gala" was not found.' }),
+    );
     renderApp('/manager');
     expect(await screen.findByRole('alert')).toHaveTextContent('Shift "harbourfront-gala" was not found.');
   });
@@ -85,11 +100,11 @@ describe('manager page', () => {
     const saved = makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited' })]);
     const fetch = stubFetch(jsonResponse(200, saved));
     const first = renderApp('/manager');
-    expect(await screen.findByText('Invited')).toBeInTheDocument();
+    expect(await screen.findByRole('cell', { name: 'Invited' })).toBeInTheDocument();
     first.unmount();
 
     renderApp('/manager'); // a refresh: new query cache, same backend state
-    expect(await screen.findByText('Invited')).toBeInTheDocument();
+    expect(await screen.findByRole('cell', { name: 'Invited' })).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

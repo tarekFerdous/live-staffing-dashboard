@@ -6,7 +6,11 @@ import { WORKER_STORAGE_KEY } from './WorkerPage';
 
 const snapshot = makeSnapshot([
   worker('amara', 'Amara Okafor', { participation: 'invited' }),
-  worker('liam', 'Liam Chen', { participation: 'accepted', attendance: 'checked_in', checkedInAt: '2026-12-12T22:10:00.000Z' }),
+  worker('liam', 'Liam Chen', {
+    participation: 'accepted',
+    attendance: 'checked_in',
+    checkedInAt: '2026-12-12T22:10:00.000Z',
+  }),
   worker('sofia', 'Sofia Rossi'),
 ]);
 
@@ -22,7 +26,9 @@ afterEach(() => {
 describe('worker page', () => {
   it("shows the selected worker's statuses from the snapshot", async () => {
     renderApp('/worker');
-    expect(await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Choose your name to see your status.')).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText('Who are you?'), 'Liam Chen');
