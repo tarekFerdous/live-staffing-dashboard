@@ -6,6 +6,8 @@ const STYLE: Partial<Record<Action, string>> = {
   accept: 'bg-emerald-700 text-white hover:bg-emerald-800',
   decline: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
   cancel: 'border border-rose-300 bg-white text-rose-800 hover:bg-rose-50',
+  check_in: 'bg-sky-700 text-white hover:bg-sky-800',
+  check_out: 'bg-slate-900 text-white hover:bg-slate-700',
 };
 
 /**

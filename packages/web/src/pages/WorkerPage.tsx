@@ -1,4 +1,4 @@
-import { canApply, type Participation, type Snapshot } from '@staffing/domain';
+import { canApply, type Participation, type Snapshot, type WorkerState } from '@staffing/domain';
 import { useState } from 'react';
 import { ActionButtons } from '../components/ActionButtons';
 import { QueryState } from '../components/QueryState';
@@ -10,8 +10,7 @@ import { useSnapshot } from '../lib/useSnapshot';
 
 export const WORKER_STORAGE_KEY = 'live-staffing.workerId';
 
-// Check-in and check-out buttons arrive with the attendance milestone (M3).
-const WORKER_ACTIONS = ['accept', 'decline', 'cancel'] as const;
+const WORKER_ACTIONS = ['accept', 'decline', 'check_in', 'check_out', 'cancel'] as const;
 
 const NO_ACTION_HINT: Record<Participation, string> = {
   uninvited: "You haven't been invited to this shift yet.",
@@ -20,6 +19,10 @@ const NO_ACTION_HINT: Record<Participation, string> = {
   declined: 'You declined this shift. The manager can invite you again.',
   cancelled: '',
 };
+
+function noActionHint(w: WorkerState): string {
+  return w.attendance === 'checked_out' ? "You've checked out. This shift is complete." : NO_ACTION_HINT[w.participation];
+}
 
 function WorkerView({ snapshot }: { snapshot: Snapshot }) {
   const { shift, workers } = snapshot;
@@ -87,7 +90,7 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
             {WORKER_ACTIONS.some((a) => canApply(me, a)) ? (
               <ActionButtons key={me.id} worker={me} actions={WORKER_ACTIONS} />
             ) : (
-              <p className="text-sm text-slate-600">{NO_ACTION_HINT[me.participation]}</p>
+              <p className="text-sm text-slate-600">{noActionHint(me)}</p>
             )}
           </div>
         </section>

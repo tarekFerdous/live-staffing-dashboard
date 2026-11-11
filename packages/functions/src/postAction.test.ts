@@ -274,3 +274,125 @@ describe('#17 retry safety', () => {
     expect(deriveCounts(snap.workers, 2).filled).toBe(2);
   });
 });
+
+describe('#18 check-in and check-out', () => {
+  /** Invites and accepts `id`, so it can check in. */
+  async function accepted(act: Awaited<ReturnType<typeof setup>>['act'], id = 'amara') {
+    await act(id, 'invite');
+    expect((await act(id, 'accept')).statusCode).toBe(200);
+  }
+
+  it('check-in then check-out: timestamps set once, participation stays Accepted, filled unchanged', async () => {
+    const { store, act } = await setup();
+    await accepted(act);
+    const inRes = await act('amara', 'check_in');
+    expect(inRes.statusCode).toBe(200);
+    expect(worker(inRes)).toMatchObject({ participation: 'accepted', attendance: 'checked_in', checkedOutAt: null });
+    expect(worker(inRes).checkedInAt).toMatch(/^\d{4}-\d\d-\d\dT/);
+
+    const outRes = await act('amara', 'check_out');
+    expect(outRes.statusCode).toBe(200);
+    expect(worker(outRes)).toMatchObject({
+      participation: 'accepted',
+      attendance: 'checked_out',
+      checkedInAt: worker(inRes).checkedInAt,
+    });
+    expect(Date.parse(worker(outRes).checkedOutAt!)).toBeGreaterThanOrEqual(Date.parse(worker(inRes).checkedInAt!));
+
+    const { events, snap } = await expectLog(store, ['invite', 'accept', 'check_in', 'check_out']);
+    expect(events[2]).toMatchObject({ actor: 'worker', row: worker(inRes) });
+    expect(events[3]).toMatchObject({ actor: 'worker', row: worker(outRes) });
+    expect(snap.shift.acceptedCount).toBe(1);
+    expect(deriveCounts(snap.workers, snap.shift.required)).toMatchObject({ filled: 1, checkedIn: 0, checkedOut: 1 });
+  });
+
+  it('a double check-in returns 200 with the original checkedInAt and writes no event', async () => {
+    const { store, act } = await setup();
+    await accepted(act);
+    const first = worker(await act('amara', 'check_in'));
+    const repeat = await act('amara', 'check_in');
+    expect(repeat.statusCode).toBe(200);
+    expect(worker(repeat)).toEqual(first);
+    await expectLog(store, ['invite', 'accept', 'check_in']);
+  });
+
+  it('check-out before check-in → 409 with a reason', async () => {
+    const { store, act } = await setup();
+    await accepted(act);
+    const res = await act('amara', 'check_out');
+    expect(res.statusCode).toBe(409);
+    expect(res.json).toMatchObject({
+      code: 'INVALID_TRANSITION',
+      message: "Can't check out Amara Okafor: they are Accepted.",
+    });
+    await expectLog(store, ['invite', 'accept']);
+  });
+
+  it('check-in when not Accepted → 409', async () => {
+    const { act } = await setup();
+    await act('amara', 'invite');
+    const res = await act('amara', 'check_in');
+    expect(res.statusCode).toBe(409);
+    expect(res.json.message).toBe("Can't check in Amara Okafor: they are Invited.");
+  });
+
+  it('check-in after check-out → 409; checked out is final', async () => {
+    const { store, act } = await setup();
+    await accepted(act);
+    await act('amara', 'check_in');
+    const out = worker(await act('amara', 'check_out'));
+    const res = await act('amara', 'check_in');
+    expect(res.statusCode).toBe(409);
+    expect(res.json).toMatchObject({
+      code: 'INVALID_TRANSITION',
+      message: "Can't check in Amara Okafor: they are Accepted and Checked out.",
+      current: out,
+    });
+    const repeatOut = await act('amara', 'check_out');
+    expect(repeatOut.statusCode).toBe(200); // a repeat, answered with the stored row
+    expect(worker(repeatOut)).toEqual(out);
+    await expectLog(store, ['invite', 'accept', 'check_in', 'check_out']);
+  });
+
+  it('cancel after check-in → 409, and the place stays filled', async () => {
+    const { store, act } = await setup();
+    await accepted(act);
+    await act('amara', 'check_in');
+    const res = await act('amara', 'cancel');
+    expect(res.statusCode).toBe(409);
+    expect(res.json).toMatchObject({
+      code: 'INVALID_TRANSITION',
+      message: "Can't cancel Amara Okafor: they are Accepted and Checked in.",
+    });
+    const { snap } = await expectLog(store, ['invite', 'accept', 'check_in']);
+    expect(snap.shift.acceptedCount).toBe(1);
+  });
+
+  it('20 parallel check-ins → one checkedInAt, one event, every response carries the same timestamp', async () => {
+    const { store, act } = await setup();
+    await accepted(act);
+    const results = await Promise.all(Array.from({ length: 20 }, () => act('amara', 'check_in')));
+    expect(results.map((r) => r.statusCode)).toEqual(Array(20).fill(200));
+    const stamps = new Set(results.map((r) => worker(r).checkedInAt));
+    expect(stamps.size).toBe(1);
+    expect([...stamps][0]).not.toBeNull();
+    expect(new Set(results.map((r) => worker(r).version))).toEqual(new Set([3]));
+    const { snap } = await expectLog(store, ['invite', 'accept', 'check_in']);
+    expect(snap.workers.find((w) => w.id === 'amara')!.checkedInAt).toBe([...stamps][0]);
+  });
+
+  it('filled keeps counting checked-in and checked-out workers', async () => {
+    const { store, act } = await setup({ ...SEED, shift: { ...SEED.shift, required: 2 } });
+    await accepted(act, 'amara');
+    await accepted(act, 'liam');
+    await act('amara', 'check_in');
+    await act('liam', 'check_in');
+    await act('liam', 'check_out');
+    await act('sofia', 'invite');
+    const full = await act('sofia', 'accept');
+    expect(full.json.code).toBe('SHIFT_FULL');
+    const snap = (await store.getSnapshot(SHIFT))!;
+    expect(snap.shift.acceptedCount).toBe(2);
+    expect(deriveCounts(snap.workers, 2)).toEqual({ required: 2, filled: 2, remaining: 0, checkedIn: 1, checkedOut: 1 });
+  });
+});

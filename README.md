@@ -31,8 +31,12 @@ Counts are never stored for display: the client derives them from the worker row
 ### Actions (write path)
 
 `POST /api/shifts/{shiftId}/workers/{workerId}/actions` with body `{ action, expectedVersion? }` and an
-`Idempotency-Key` header. The actions are `invite` (manager), `accept`, `decline` and `cancel` (worker). `check_in` and
-`check_out` follow the same path and get their UI in M3.
+`Idempotency-Key` header. The actions are `invite` (manager), `accept`, `decline`, `cancel`, `check_in` and `check_out`
+(worker). `check_in` needs Accepted + Not started and sets `checkedInAt`; `check_out` needs Checked in and sets
+`checkedOutAt`, and Checked out is final. Participation stays Accepted through both, so filled places don't change.
+
+Timestamps come from the Lambda clock, not the browser. A client clock can be wrong or deliberately changed, and a
+retried request would carry a different time; the server stamps once and the write condition keeps that first value.
 
 Each action is one read of META and the worker row, followed by a single `TransactWriteItems`:
 

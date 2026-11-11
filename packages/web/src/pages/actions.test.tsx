@@ -185,6 +185,81 @@ describe('worker: accept, decline, cancel', () => {
   });
 });
 
+describe('worker: check in and check out', () => {
+  const pick = async (name: string) => userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
+  const buttons = () => screen.queryAllByRole('button', { name: /Amara Okafor$/ }).map((b) => b.textContent);
+
+  it('Accepted → Check in (Cancel still offered) → Check out (Cancel gone) → final, with times shown', async () => {
+    const api = fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]));
+    renderApp('/worker');
+    await pick('Amara Okafor');
+    expect(buttons()).toEqual(['Check in', 'Cancel']);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
+    await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
+    expect(buttons()).toEqual(['Check out']);
+    expect(screen.getByText(/3:01\sp\.m\./)).toBeInTheDocument(); // checkedInAt in Toronto time
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check out Amara Okafor' }));
+    await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked out'));
+    expect(buttons()).toEqual([]);
+    expect(screen.getByText("You've checked out. This shift is complete.")).toBeInTheDocument();
+    expect(screen.getByTestId('my-participation')).toHaveTextContent('Accepted');
+
+    expect(api.posts().map((p) => p.body)).toEqual([
+      { action: 'check_in', expectedVersion: 2 },
+      { action: 'check_out', expectedVersion: 3 },
+    ]);
+  });
+
+  it('Check in is not offered before accepting', async () => {
+    fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited' })]));
+    renderApp('/worker');
+    await pick('Amara Okafor');
+    expect(buttons()).toEqual(['Accept', 'Decline']);
+  });
+
+  it('a double click on Check in sends one request', async () => {
+    const api = fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]));
+    renderApp('/worker');
+    await pick('Amara Okafor');
+    const release = api.holdPosts();
+    await userEvent.dblClick(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
+    release();
+    await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
+    expect(api.posts()).toHaveLength(1);
+  });
+
+  it('the manager table shows check-in / check-out times and counts after the worker acts', async () => {
+    const api = fakeApi(
+      makeSnapshot([
+        worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 }),
+        worker('liam', 'Liam Chen', { participation: 'accepted', version: 2 }),
+      ], { acceptedCount: 2 }),
+    );
+    renderApp('/worker');
+    await pick('Amara Okafor');
+    await userEvent.click(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
+    await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
+    await pick('Liam Chen');
+    await userEvent.click(screen.getByRole('button', { name: 'Check in Liam Chen' }));
+    await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
+    await userEvent.click(screen.getByRole('button', { name: 'Check out Liam Chen' }));
+    await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked out'));
+
+    await userEvent.click(screen.getByRole('link', { name: 'Manager' }));
+    await screen.findByRole('table');
+    await waitFor(() => expect(screen.getByTestId('count-checked-out')).toHaveTextContent('1'));
+    expect(screen.getByTestId('count-checked-in')).toHaveTextContent('1');
+    expect(screen.getByTestId('count-filled')).toHaveTextContent('2');
+    expect(screen.getByTestId('count-remaining')).toHaveTextContent('1');
+    // Clock ticks a minute per POST from 20:00Z: 3:01, 3:02, 3:03 p.m. Toronto.
+    expect(row('Amara Okafor')).toHaveTextContent(/3:01\sp\.m\./);
+    expect(row('Liam Chen')).toHaveTextContent(/3:02\sp\.m\..*3:03\sp\.m\./);
+    expect(api.snapshot.shift.acceptedCount).toBe(2);
+  });
+});
+
 describe('counts stay consistent with the list', () => {
   it('filled / remaining follow every action', async () => {
     const api = fakeApi(makeSnapshot(undefined, { required: 2 }));

@@ -69,6 +69,47 @@ describe('applyAction', () => {
     });
   });
 
+  it('check_in stamps checkedInAt and keeps the worker Accepted; a repeat keeps the first timestamp', () => {
+    const accepted = row({ participation: 'accepted', respondedAt: T0, version: 2 });
+    const r = applyAction(accepted, 'check_in', ctx);
+    expect(r).toEqual({
+      kind: 'applied',
+      worker: { ...accepted, attendance: 'checked_in', checkedInAt: T1, version: 3 },
+      acceptedDelta: 0,
+    });
+    const checkedIn = r.kind === 'applied' ? r.worker : accepted;
+    expect(applyAction(checkedIn, 'check_in', { ...ctx, now: '2026-12-12T23:00:00.000Z' })).toEqual({
+      kind: 'already',
+      worker: checkedIn,
+    });
+  });
+
+  it('check_out stamps checkedOutAt and is final', () => {
+    const checkedIn = row({ participation: 'accepted', attendance: 'checked_in', checkedInAt: T0, version: 3 });
+    const r = applyAction(checkedIn, 'check_out', ctx);
+    expect(r).toMatchObject({ kind: 'applied', acceptedDelta: 0, worker: { attendance: 'checked_out', checkedOutAt: T1 } });
+    const out = r.kind === 'applied' ? r.worker : checkedIn;
+    expect(applyAction(out, 'check_in', ctx)).toMatchObject({
+      kind: 'rejected',
+      code: 'INVALID_TRANSITION',
+      message: "Can't check in Amara Okafor: they are Accepted and Checked out.",
+    });
+    expect(applyAction(out, 'cancel', ctx)).toMatchObject({ kind: 'rejected', code: 'INVALID_TRANSITION' });
+  });
+
+  it.each([
+    ['check out before checking in', row({ participation: 'accepted' }), 'check_out', "Can't check out Amara Okafor: they are Accepted."],
+    ['check in while only Invited', row({ participation: 'invited' }), 'check_in', "Can't check in Amara Okafor: they are Invited."],
+    [
+      'cancel after checking in',
+      row({ participation: 'accepted', attendance: 'checked_in' }),
+      'cancel',
+      "Can't cancel Amara Okafor: they are Accepted and Checked in.",
+    ],
+  ] as const)('refuses to %s with a reason', (_, w, action, message) => {
+    expect(applyAction(w, action, ctx)).toMatchObject({ kind: 'rejected', code: 'INVALID_TRANSITION', message });
+  });
+
   it('rejects a stale expectedVersion with the current row', () => {
     const invited = row({ participation: 'invited', version: 4 });
     expect(applyAction(invited, 'accept', { ...ctx, expectedVersion: 3 })).toMatchObject({
