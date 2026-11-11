@@ -1,18 +1,14 @@
 import { join } from 'node:path';
-import { CfnOutput, Duration, Expiration, Fn, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, Expiration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as appsync from 'aws-cdk-lib/aws-appsync';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { DynamoEventSource, SqsDlq } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { marshall } from '@aws-sdk/util-dynamodb';
@@ -173,60 +169,32 @@ export class AppStack extends Stack {
       }),
     );
 
-    // ── Site + CDN (one origin for site and API: no CORS) ───────────────────
-    const bucket = new s3.Bucket(this, 'SiteBucket', {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      // Emptied on destroy by the BucketDeployment below (retainOnDelete: false).
+    // ── Site (one origin for site and API: no CORS) ─────────────────────────
+    // Temporary: the account can't create CloudFront distributions until AWS verifies it
+    // (see todo.md), so the built app is a Lambda layer served by catch-all GET routes
+    // (`/` and `/{proxy+}`) on the same HTTP API. The more specific /api/* routes always win.
+    // To restore CloudFront + S3, bring back this block as it was in commit 706197f.
+    const siteFiles = new lambda.LayerVersion(this, 'SiteFiles', {
+      code: lambda.Code.fromAsset(props.siteAssetPath),
+      compatibleArchitectures: [lambda.Architecture.ARM_64],
+      description: 'Built web app (packages/web/dist), mounted at /opt',
       removalPolicy: RemovalPolicy.DESTROY,
     });
-
-    // Client-side routes (/manager, /worker) serve index.html. Done in a viewer
-    // function, not distribution error responses, so API 404s stay intact.
-    const spaRewrite = new cloudfront.Function(this, 'SpaRewrite', {
-      runtime: cloudfront.FunctionRuntime.JS_2_0,
-      code: cloudfront.FunctionCode.fromInline(
-        'function handler(event) { var r = event.request; if (r.uri.indexOf(".") === -1) { r.uri = "/index.html"; } return r; }',
-      ),
+    const site = this.fn('Site', 'site.ts', { SITE_DIR: '/opt' });
+    site.addLayers(siteFiles);
+    api.addRoutes({
+      path: '/{proxy+}',
+      methods: [apigw.HttpMethod.GET, apigw.HttpMethod.HEAD],
+      integration: new HttpLambdaIntegration('SiteIntegration', site),
     });
-
-    const apiDomain = Fn.select(2, Fn.split('/', api.apiEndpoint));
-    const distribution = new cloudfront.Distribution(this, 'Site', {
-      defaultRootObject: 'index.html',
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
-      defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        functionAssociations: [
-          { function: spaRewrite, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },
-        ],
-      },
-      additionalBehaviors: {
-        '/api/*': {
-          origin: new origins.HttpOrigin(apiDomain, {
-            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
-          }),
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-        },
-      },
-    });
-
-    new s3deploy.BucketDeployment(this, 'DeploySite', {
-      sources: [s3deploy.Source.asset(props.siteAssetPath)],
-      destinationBucket: bucket,
-      distribution,
-      distributionPaths: ['/*'],
-      retainOnDelete: false,
-      memoryLimit: 256,
-      logGroup: this.logGroup('DeploySiteLogs'),
+    api.addRoutes({
+      path: '/',
+      methods: [apigw.HttpMethod.GET, apigw.HttpMethod.HEAD],
+      integration: new HttpLambdaIntegration('SiteRootIntegration', site),
     });
 
     // ── Outputs ─────────────────────────────────────────────────────────────
-    new CfnOutput(this, 'SiteUrl', { value: `https://${distribution.distributionDomainName}` });
+    new CfnOutput(this, 'SiteUrl', { value: api.apiEndpoint });
     new CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new CfnOutput(this, 'TableName', { value: table.tableName });
     new CfnOutput(this, 'ShiftId', { value: SEED.shift.id });

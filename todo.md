@@ -1,18 +1,19 @@
 # TODO
 
-## Get the AWS account verified for CloudFront (blocks the live deploy)
+## Get the AWS account verified for CloudFront, then bring CloudFront back
 
-The `LiveStaffingApp` deploy fails with:
+Creating a CloudFront distribution fails with:
 
 > Your account must be verified before you can add new CloudFront resources. To verify your account, please contact AWS Support.
 
-The rest works: CI checks pass and GitHub signs in to AWS through OIDC. The stack rolls back on failure, so nothing is left running or billing.
+Workaround in place: the site is served by a `Site` Lambda (built app as a Lambda layer) on catch-all GET routes of the
+HTTP API, so everything deploys without CloudFront. `SiteUrl` is the `execute-api` URL for now.
 
 - [ ] Open a case at https://console.aws.amazon.com/support/home#/ ("Account and billing" is usually free).
-      Ask them to verify the account for CloudFront. Include the error message and request ID
-      `753a5278-f38a-8770-3ebd-d8e362613936` (CI run 42950559507).
-- [ ] Once AWS confirms, re-run the failed deploy: `gh run rerun 42950559507 --failed` (or push any commit).
-      No code change is needed.
+      Ask them to verify the account for CloudFront. Include the error message and request IDs
+      `753a5278-f38a-8770-3ebd-d8e362613936` (CI run 42950559507) and `ffb3d3d9-7aea-4c73-bdd8-0da8b9408d7e` (CI run 43001256024).
+- [ ] Once AWS confirms, restore CloudFront + S3: bring back the "Site + CDN" block of `packages/infra/lib/app-stack.ts`
+      and its tests from commit `706197f`, remove the `Site` Lambda, layer and catch-all routes, and redeploy.
 - [ ] Check the remaining #13 / #14 criteria:
   - [ ] Deploy outputs print SiteUrl, ApiUrl and TableName
   - [ ] Manager page loads from the CloudFront URL with seeded data

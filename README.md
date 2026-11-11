@@ -6,13 +6,13 @@ A worker view and a manager dashboard for one event shift, with live updates, bu
 
 ## Layout
 
-| Package              | What it holds                                                                                   |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `packages/domain`    | Statuses, transition table, `deriveCounts`, Zod schemas. No AWS or React imports.               |
-| `packages/store`     | DynamoDB single-table repository, seed data, reset script, test helpers.                        |
-| `packages/functions` | Lambda handlers and a tiny local HTTP adapter that calls the same handlers.                     |
-| `packages/web`       | React + Vite + TanStack Query + Tailwind. Routes `/manager` and `/worker`.                      |
-| `packages/infra`     | CDK: `BootstrapStack` (OIDC role, budget) and `AppStack` (table, API, Lambdas, S3, CloudFront). |
+| Package              | What it holds                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| `packages/domain`    | Statuses, transition table, `deriveCounts`, Zod schemas. No AWS or React imports.                     |
+| `packages/store`     | DynamoDB single-table repository, seed data, reset script, test helpers.                              |
+| `packages/functions` | Lambda handlers and a tiny local HTTP adapter that calls the same handlers.                           |
+| `packages/web`       | React + Vite + TanStack Query + Tailwind. Routes `/manager` and `/worker`.                            |
+| `packages/infra`     | CDK: `BootstrapStack` (OIDC role, budget) and `AppStack` (table, API, Lambdas, AppSync Events, site). |
 
 ### Data model
 
@@ -142,8 +142,14 @@ $env:AWS_PROFILE = "staffing"
 pnpm run deploy          # builds the web app, deploys AppStack, prints SiteUrl / ApiUrl / TableName
 pnpm run deploy:hotswap  # dev only: pushes Lambda code changes in seconds, bypassing CloudFormation
 pnpm reset --stage       # restore the seeded state on the deployed table
-pnpm destroy             # removes AppStack (table and bucket included)
+pnpm destroy             # removes AppStack (tables included)
 ```
+
+**Site hosting (temporary):** the account can't create CloudFront distributions until AWS Support verifies it, so the
+built app ships as a Lambda layer and a small `Site` Lambda serves it on catch-all `GET /` and `GET /{proxy+}` routes of
+the same HTTP API. The `/api/*` routes are more specific and always win, so page and API still share one origin with no
+CORS. `SiteUrl` is the API's `execute-api` URL. Costs: one extra Lambda call per page or asset load (assets under
+`/assets/` are cached for a year). The CloudFront + S3 version is in commit `706197f`; see `todo.md` to restore it.
 
 Use `pnpm run deploy`, not `pnpm deploy`, because `deploy` is a built-in pnpm command.
 The stack seeds the shift when it is first created, so a fresh deploy works without running `reset`.

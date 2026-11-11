@@ -7,9 +7,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { AppStack } from '../lib/app-stack';
 import { tagApp } from '../lib/config';
 
-// CloudFront's managed CachingDisabled policy id.
-const CACHING_DISABLED = '4135ea2d-6df8-44a3-9df3-4b5a84be39ad';
-
 let t: Template;
 beforeAll(() => {
   const site = mkdtempSync(join(tmpdir(), 'site-'));
@@ -38,20 +35,16 @@ describe('AppStack', () => {
     expect(table.Properties.BillingMode).not.toBe('PAY_PER_REQUEST');
   });
 
-  it('routes /api/* on CloudFront to the HTTP API with caching disabled', () => {
-    const dist = Object.values(t.findResources('AWS::CloudFront::Distribution'))[0]!;
-    const cfg = dist.Properties.DistributionConfig;
-    const api = cfg.CacheBehaviors.find((b: { PathPattern: string }) => b.PathPattern === '/api/*');
-    expect(api).toBeDefined();
-    expect(api.CachePolicyId).toBe(CACHING_DISABLED);
-    expect(api.AllowedMethods).toEqual(expect.arrayContaining(['GET', 'POST']));
-    const origin = cfg.Origins.find((o: { Id: string }) => o.Id === api.TargetOriginId);
-    expect(origin.CustomOriginConfig.OriginProtocolPolicy).toBe('https-only');
-    // The default behaviour serves the site from S3 through OAC.
-    const s3Origin = cfg.Origins.find(
-      (o: { Id: string }) => o.Id === cfg.DefaultCacheBehavior.TargetOriginId,
-    );
-    expect(s3Origin.OriginAccessControlId).toBeDefined();
+  it('serves the built site from a Lambda layer on catch-all GET routes of the same API', () => {
+    t.resourceCountIs('AWS::CloudFront::Distribution', 0);
+    t.resourceCountIs('AWS::S3::Bucket', 0);
+    t.resourceCountIs('AWS::Lambda::LayerVersion', 1);
+    t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /{proxy+}' });
+    t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /' });
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: { SITE_DIR: '/opt' } },
+      Layers: [Match.anyValue()],
+    });
   });
 
   it('serves the read and action routes from the HTTP API', () => {
@@ -134,9 +127,6 @@ describe('AppStack', () => {
           },
         },
       });
-      // The site bucket holds only the build: one artifact for every stack.
-      const deployment = Object.values(t.findResources('Custom::CDKBucketDeployment'))[0]!;
-      expect(deployment.Properties.SourceObjectKeys).toHaveLength(1);
       t.hasOutput('EventsHttpHost', {});
       t.hasOutput('EventsRealtimeHost', {});
       t.hasOutput('EventsApiKey', {});
@@ -187,27 +177,15 @@ describe('AppStack', () => {
     }
   });
 
-  it('keeps the bucket private', () => {
-    t.hasResourceProperties('AWS::S3::Bucket', {
-      PublicAccessBlockConfiguration: {
-        BlockPublicAcls: true,
-        BlockPublicPolicy: true,
-        IgnorePublicAcls: true,
-        RestrictPublicBuckets: true,
-      },
-    });
-  });
-
   it('prints the site URL, API URL and table name', () => {
     t.hasOutput('SiteUrl', {});
     t.hasOutput('ApiUrl', {});
     t.hasOutput('TableName', {});
   });
 
-  it('can be destroyed cleanly (table and bucket are deleted with the stack)', () => {
+  it('can be destroyed cleanly (tables and the site layer are deleted with the stack)', () => {
     t.hasResource('AWS::DynamoDB::Table', { DeletionPolicy: 'Delete' });
-    t.hasResource('AWS::S3::Bucket', { DeletionPolicy: 'Delete' });
-    t.hasResourceProperties('Custom::CDKBucketDeployment', { RetainOnDelete: false });
+    t.hasResource('AWS::Lambda::LayerVersion', { DeletionPolicy: 'Delete' });
   });
 
   it('tags resources with the project name', () => {
