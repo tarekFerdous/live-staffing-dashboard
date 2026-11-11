@@ -1,23 +1,11 @@
 import { useLive, type LiveStatus } from '../lib/live';
 
-const PILL: Record<LiveStatus, { label: string; dot: string; style: string }> = {
-  live: { label: 'Live', dot: 'bg-emerald-500', style: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  connecting: {
-    label: 'Connecting…',
-    dot: 'bg-slate-400',
-    style: 'bg-slate-50 text-slate-700 border-slate-200',
-  },
-  reconnecting: {
-    label: 'Reconnecting…',
-    dot: 'bg-amber-500',
-    style: 'bg-amber-50 text-amber-900 border-amber-200',
-  },
-  offline: { label: 'Offline', dot: 'bg-rose-500', style: 'bg-rose-50 text-rose-800 border-rose-200' },
-  off: {
-    label: 'Live updates off',
-    dot: 'bg-slate-300',
-    style: 'bg-slate-50 text-slate-600 border-slate-200',
-  },
+const PILL: Record<LiveStatus, { label: string; style: string }> = {
+  live: { label: 'Live', style: 'chip-ok' },
+  connecting: { label: 'Connecting…', style: 'chip-neutral' },
+  reconnecting: { label: 'Reconnecting…', style: 'chip-warn' },
+  offline: { label: 'Offline', style: 'chip-bad' },
+  off: { label: 'Live updates off', style: 'chip-neutral' },
 };
 
 /** Header controls: connection pill, latency of the last live event, and the outage switch. */
@@ -25,37 +13,36 @@ export function LiveStatusBar() {
   const live = useLive();
   const pill = PILL[live.status];
   return (
-    <div className="flex items-center gap-2">
-      {live.latencyMs !== null && live.status === 'live' && (
-        <span
-          data-testid="latency-badge"
-          title="Approximate: compares the server's clock with this browser's clock"
-          className="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600"
-        >
-          Last update ≈ {Math.round(live.latencyMs)} ms (approx.)
-        </span>
-      )}
+    <div className="flex flex-wrap items-center gap-2">
       <span
         role="status"
         aria-label={`Connection: ${pill.label}`}
         data-testid="connection-pill"
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${pill.style}`}
+        className={`chip ${pill.style}`}
       >
-        <span aria-hidden="true" className={`h-2 w-2 rounded-full ${pill.dot}`} />
         {pill.label}
       </span>
+      {live.latencyMs !== null && live.status === 'live' && (
+        <span
+          data-testid="latency-badge"
+          title="Approximate: compares the server's clock with this browser's clock"
+          className="text-xs text-muted tabular-nums"
+        >
+          Last update ≈ {Math.round(live.latencyMs)} ms (approx.)
+        </span>
+      )}
       {live.enabled && (
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted">
           <button
             type="button"
             role="switch"
             aria-checked={live.outage}
             onClick={() => live.setOutage(!live.outage)}
-            className={`relative h-4 w-7 rounded-full transition-colors ${live.outage ? 'bg-rose-600' : 'bg-slate-300'}`}
+            className={`relative h-5 w-9 shrink-0 rounded-full border border-border transition-colors ${live.outage ? 'bg-bad-fg' : 'bg-neutral-bg'}`}
           >
             <span
               aria-hidden="true"
-              className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${live.outage ? 'left-3.5' : 'left-0.5'}`}
+              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-surface shadow transition-all ${live.outage ? 'left-[1.125rem]' : 'left-0.5'}`}
             />
           </button>
           Simulate outage
@@ -78,7 +65,7 @@ export function LivePausedNotice() {
   return (
     <div
       id={PAUSED_NOTICE_ID}
-      className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900"
+      className="border-t border-border bg-warn-bg px-4 py-2 text-center text-sm text-warn-fg"
     >
       {text}
     </div>

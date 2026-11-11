@@ -82,6 +82,25 @@ export const ActionRequestSchema = z
   .strict();
 export type ActionRequest = z.infer<typeof ActionRequestSchema>;
 
+/**
+ * `GET /api/config`: tells one client build where its live channel is.
+ * `realtime.url` is the WebSocket URL; a path (local mode) is resolved against the page's origin.
+ * `realtime: null` means live updates are off and the page refetches after actions.
+ */
+export const RuntimeConfigSchema = z.object({
+  mode: z.enum(['local', 'cloud']),
+  realtime: z
+    .object({
+      url: z.string().min(1),
+      /** Host named in the connection's auth header (the AppSync HTTP host in the cloud). */
+      httpHost: z.string().min(1),
+      /** Subscribe-only key. */
+      apiKey: z.string().min(1),
+    })
+    .nullable(),
+});
+export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+
 export const ApiErrorSchema = z.object({
   code: z.string(),
   message: z.string(),

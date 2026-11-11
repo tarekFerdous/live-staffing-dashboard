@@ -123,9 +123,20 @@ describe('AppStack', () => {
       expect(keys[0]!.Properties.Expires).toBeGreaterThan(Date.now() / 1000 + 300 * 24 * 3600);
     });
 
-    it('ships config.json next to the site and prints the realtime endpoints', () => {
+    it('serves the realtime endpoints on GET /api/config and prints them', () => {
+      t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /api/config' });
+      t.hasResourceProperties('AWS::Lambda::Function', {
+        Environment: {
+          Variables: {
+            EVENTS_HTTP_HOST: Match.anyValue(),
+            EVENTS_REALTIME_HOST: Match.anyValue(),
+            EVENTS_API_KEY: Match.anyValue(),
+          },
+        },
+      });
+      // The site bucket holds only the build: one artifact for every stack.
       const deployment = Object.values(t.findResources('Custom::CDKBucketDeployment'))[0]!;
-      expect(deployment.Properties.SourceObjectKeys).toHaveLength(2);
+      expect(deployment.Properties.SourceObjectKeys).toHaveLength(1);
       t.hasOutput('EventsHttpHost', {});
       t.hasOutput('EventsRealtimeHost', {});
       t.hasOutput('EventsApiKey', {});

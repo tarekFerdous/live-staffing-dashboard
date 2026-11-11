@@ -1,1 +1,300 @@
 @import 'tailwindcss';
+
+/*
+ * Design tokens. Every colour on screen comes from here, so light and dark are one switch.
+ * The accent (violet) is for actions and navigation only; status chips use their own
+ * semantic colours (neutral, amber, green, red, blue, teal), never the accent.
+ * Theme: the system setting by default; <html data-theme="light|dark"> overrides it.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #f8f9fb;
+  --border: #e2e5eb;
+  --fg: #111827;
+  --muted: #5b6474;
+  --accent: #6d28d9;
+  --accent-hover: #5b21b6;
+  --accent-fg: #ffffff;
+  --accent-soft: #ede9fe;
+  --focus: #7c3aed;
+
+  --neutral-bg: #eef0f3;
+  --neutral-fg: #3f4652;
+  --warn-bg: #fef3c7;
+  --warn-fg: #8a4b06;
+  --ok-bg: #dcfce7;
+  --ok-fg: #166534;
+  --bad-bg: #fee2e2;
+  --bad-fg: #9f1239;
+  --info-bg: #dbeafe;
+  --info-fg: #1e40af;
+  --done-bg: #ccfbf1;
+  --done-fg: #115e59;
+
+  --toast-bg: #1f2937;
+  --toast-fg: #ffffff;
+  --toast-error-bg: #9f1239;
+}
+
+/* Dark tokens appear twice: once for the system setting, once for the stored override. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c222b;
+    --border: #2d3540;
+    --fg: #e6e9ef;
+    --muted: #9aa4b2;
+    --accent: #a78bfa;
+    --accent-hover: #c4b5fd;
+    --accent-fg: #1a1033;
+    --accent-soft: #2e2550;
+    --focus: #c4b5fd;
+    --neutral-bg: #262d37;
+    --neutral-fg: #c9d1dc;
+    --warn-bg: #3d2e0a;
+    --warn-fg: #fcd34d;
+    --ok-bg: #0f3321;
+    --ok-fg: #86efac;
+    --bad-bg: #3f1220;
+    --bad-fg: #fda4af;
+    --info-bg: #132b52;
+    --info-fg: #93c5fd;
+    --done-bg: #0b3330;
+    --done-fg: #5eead4;
+    --toast-bg: #e6e9ef;
+    --toast-fg: #111827;
+    --toast-error-bg: #fda4af;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #1c222b;
+  --border: #2d3540;
+  --fg: #e6e9ef;
+  --muted: #9aa4b2;
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+  --accent-fg: #1a1033;
+  --accent-soft: #2e2550;
+  --focus: #c4b5fd;
+  --neutral-bg: #262d37;
+  --neutral-fg: #c9d1dc;
+  --warn-bg: #3d2e0a;
+  --warn-fg: #fcd34d;
+  --ok-bg: #0f3321;
+  --ok-fg: #86efac;
+  --bad-bg: #3f1220;
+  --bad-fg: #fda4af;
+  --info-bg: #132b52;
+  --info-fg: #93c5fd;
+  --done-bg: #0b3330;
+  --done-fg: #5eead4;
+  --toast-bg: #e6e9ef;
+  --toast-fg: #111827;
+  --toast-error-bg: #fda4af;
+}
+
+/* Exposed to Tailwind as bg-surface, text-muted, border-border, bg-accent, … */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-fg: var(--ok-fg);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-fg: var(--bad-fg);
+  --color-neutral-bg: var(--neutral-bg);
+  --color-neutral-fg: var(--neutral-fg);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family:
+      'Inter',
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+    overflow-wrap: anywhere;
+  }
+  /* One visible focus style for every control, keyboard only. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 2.25rem;
+    padding: 0.375rem 0.875rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    transition:
+      background-color 120ms,
+      border-color 120ms;
+  }
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .btn[aria-busy='true']:disabled {
+    cursor: wait;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  .btn-primary:not(:disabled):hover {
+    background: var(--accent-hover);
+  }
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--fg);
+    border-color: var(--border);
+  }
+  .btn-secondary:not(:disabled):hover {
+    background: var(--surface-2);
+  }
+  .btn-danger {
+    background: var(--surface);
+    color: var(--bad-fg);
+    border-color: color-mix(in srgb, var(--bad-fg) 40%, transparent);
+  }
+  .btn-danger:not(:disabled):hover {
+    background: var(--bad-bg);
+  }
+
+  /* Status chips: semantic colour + dot + text, so colour is never the only signal. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+  }
+  .chip::before {
+    content: '';
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+  .chip-neutral {
+    background: var(--neutral-bg);
+    color: var(--neutral-fg);
+  }
+  .chip-warn {
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+  }
+  .chip-ok {
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+  }
+  .chip-bad {
+    background: var(--bad-bg);
+    color: var(--bad-fg);
+  }
+  .chip-info {
+    background: var(--info-bg);
+    color: var(--info-fg);
+  }
+  .chip-done {
+    background: var(--done-bg);
+    color: var(--done-fg);
+  }
+
+  .toast {
+    background: var(--toast-bg);
+    color: var(--toast-fg);
+  }
+  .toast-error {
+    background: var(--toast-error-bg);
+    color: var(--toast-fg);
+  }
+
+  /*
+   * The worker table becomes one card per worker below 640 px, with each cell labelled
+   * from data-label: no horizontal scrolling on a phone.
+   */
+  @media (max-width: 639px) {
+    .responsive-table thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    .responsive-table,
+    .responsive-table tbody {
+      display: block;
+    }
+    .responsive-table tr {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem 1rem;
+      padding: 1rem;
+    }
+    .responsive-table th[scope='row'],
+    .responsive-table td[data-wide] {
+      grid-column: 1 / -1;
+    }
+    .responsive-table th,
+    .responsive-table td {
+      display: block;
+      padding: 0;
+    }
+    .responsive-table td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.125rem;
+    }
+  }
+}

@@ -6,11 +6,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import { fetchEvents, fetchSnapshot, SHIFT_ID } from './api';
+import { overlayPending, type PendingRow } from './optimistic';
 import {
   createShiftSync,
   type ShiftSync,
@@ -19,6 +21,7 @@ import {
   type Transport,
 } from './sync/shiftSync';
 import { snapshotKey } from './useSnapshot';
+import { addTimelineEvents } from './useTimeline';
 
 /** `off` means this build has no live channel configured (actions refetch instead). */
 export type LiveStatus = SyncStatus | 'off';
@@ -34,6 +37,8 @@ export type Live = {
   setOutage(on: boolean): void;
   /** Feed a committed change from an action response into the live state. */
   ingest(seq: number, row: Worker): void;
+  /** Optimistic rows of this page's own in-flight actions, kept on top of live snapshots. */
+  pending: Map<string, PendingRow>;
 };
 
 const OFF: SyncState = { status: 'connecting', latencyMs: null };
@@ -63,6 +68,8 @@ export function useShiftSync(
   shiftId: string,
   online: boolean,
   blocked: boolean,
+  /** Must be stable across renders (it is read whenever the sync writes a snapshot). */
+  pending: ReadonlyMap<string, PendingRow>,
 ) {
   const queryClient = useQueryClient();
   const [sync, setSync] = useState<ShiftSync | null>(null);
@@ -74,7 +81,8 @@ export function useShiftSync(
       shiftId,
       transport,
       api: { fetchEvents, fetchSnapshot: (id) => fetchSnapshot(id) },
-      onSnapshot: (snap) => queryClient.setQueryData(key, snap),
+      onSnapshot: (snap) => queryClient.setQueryData(key, overlayPending(snap, pending)),
+      onEvent: (event) => addTimelineEvents(queryClient, shiftId, [event]),
       online: navigator.onLine,
     });
     const offer = (data: unknown) => {
@@ -93,7 +101,7 @@ export function useShiftSync(
       s.stop();
       setSync(null);
     };
-  }, [transport, shiftId, queryClient]);
+  }, [transport, shiftId, queryClient, pending]);
 
   useEffect(() => sync?.setOnline(online), [sync, online]);
   useEffect(() => sync?.setBlocked(blocked), [sync, blocked]);
@@ -110,6 +118,7 @@ const LiveContext = createContext<Live>({
   outage: false,
   setOutage: () => {},
   ingest: () => {},
+  pending: new Map(),
 });
 
 export function LiveProvider({
@@ -123,7 +132,8 @@ export function LiveProvider({
 }) {
   const online = useOnline();
   const [outage, setOutage] = useState(false);
-  const { sync, state } = useShiftSync(transport, shiftId, online, outage);
+  const pending = useRef(new Map<string, PendingRow>()).current;
+  const { sync, state } = useShiftSync(transport, shiftId, online, outage, pending);
   const ingest = useCallback((seq: number, row: Worker) => sync?.ingest(seq, row), [sync]);
 
   const value = useMemo<Live>(() => {
@@ -136,6 +146,7 @@ export function LiveProvider({
         outage,
         setOutage,
         ingest,
+        pending,
       };
     }
     return {
@@ -146,8 +157,9 @@ export function LiveProvider({
       outage,
       setOutage,
       ingest,
+      pending,
     };
-  }, [transport, online, state, outage, ingest]);
+  }, [transport, online, state, outage, ingest, pending]);
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
 }

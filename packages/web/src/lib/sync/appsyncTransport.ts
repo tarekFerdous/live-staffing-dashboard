@@ -1,12 +1,13 @@
 // The AppSync Events WebSocket protocol, spoken directly (no Amplify), so connection
 // state is fully under our control. https://docs.aws.amazon.com/appsync/latest/eventapi/event-api-websocket-protocol.html
+import { RuntimeConfigSchema } from '@staffing/domain';
 import type { Transport } from './shiftSync';
 
 export type RealtimeConfig = {
-  /** `<id>.appsync-api.<region>.amazonaws.com`: signs the auth header. */
+  /** Absolute WebSocket URL: `wss://<id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime` in the cloud. */
+  url: string;
+  /** `<id>.appsync-api.<region>.amazonaws.com`: named in the auth header. */
   httpHost: string;
-  /** `<id>.appsync-realtime-api.<region>.amazonaws.com`: the WebSocket endpoint. */
-  realtimeHost: string;
   /** Subscribe-only API key. */
   apiKey: string;
 };
@@ -46,10 +47,7 @@ export function appSyncTransport(
 
   return {
     connect(channel, handlers) {
-      const ws = createSocket(`wss://${cfg.realtimeHost}/event/realtime`, [
-        'aws-appsync-event-ws',
-        `header-${base64Url(JSON.stringify(auth))}`,
-      ]);
+      const ws = createSocket(cfg.url, ['aws-appsync-event-ws', `header-${base64Url(JSON.stringify(auth))}`]);
       const subscriptionId = newId();
       let done = false;
       let keepAliveMs = DEFAULT_KEEPALIVE_TIMEOUT_MS;
@@ -138,15 +136,27 @@ export function appSyncTransport(
   };
 }
 
-/** Reads `/config.json` (written by the deploy). No file or no realtime block means live updates are off. */
-export async function loadRealtimeConfig(fetchFn: typeof fetch = fetch): Promise<RealtimeConfig | null> {
+/**
+ * Reads `GET /api/config` from the API this page is served with, so the same build runs
+ * locally and in the cloud. A relative `url` (local mode) is resolved against `base`
+ * (the page's address) with ws:// or wss:// to match. No config, or `realtime: null`,
+ * means live updates are off and the app refetches after actions.
+ */
+export async function loadRealtimeConfig(
+  fetchFn: typeof fetch = fetch,
+  base: string = globalThis.location?.href ?? 'http://localhost/',
+): Promise<RealtimeConfig | null> {
   try {
-    const res = await fetchFn('/config.json', { cache: 'no-store' });
+    const res = await fetchFn('/api/config', { cache: 'no-store' });
     if (!res.ok) return null;
-    const body = (await res.json()) as { realtime?: Partial<RealtimeConfig> };
-    const r = body.realtime;
-    if (!r?.httpHost || !r.realtimeHost || !r.apiKey) return null;
-    return { httpHost: r.httpHost, realtimeHost: r.realtimeHost, apiKey: r.apiKey };
+    const parsed = RuntimeConfigSchema.safeParse(await res.json());
+    const r = parsed.success ? parsed.data.realtime : null;
+    if (!r) return null;
+    const url = new URL(r.url, base);
+    if (url.protocol === 'http:') url.protocol = 'ws:';
+    if (url.protocol === 'https:') url.protocol = 'wss:';
+    if (url.protocol !== 'ws:' && url.protocol !== 'wss:') return null;
+    return { url: url.toString(), httpHost: r.httpHost, apiKey: r.apiKey };
   } catch {
     return null;
   }

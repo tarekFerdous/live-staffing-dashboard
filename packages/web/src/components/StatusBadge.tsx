@@ -5,26 +5,25 @@ import {
   type Participation,
 } from '@staffing/domain';
 
+// Semantic colours only (see index.css); the accent is reserved for actions.
 const PARTICIPATION_STYLE: Record<Participation, string> = {
-  uninvited: 'bg-slate-100 text-slate-700',
-  invited: 'bg-amber-100 text-amber-800',
-  accepted: 'bg-emerald-100 text-emerald-800',
-  declined: 'bg-rose-100 text-rose-800',
-  cancelled: 'bg-slate-200 text-slate-700',
+  uninvited: 'chip-neutral',
+  invited: 'chip-warn',
+  accepted: 'chip-ok',
+  declined: 'chip-bad',
+  cancelled: 'chip-neutral',
 };
 
 const ATTENDANCE_STYLE: Record<Attendance, string> = {
-  not_started: 'bg-slate-100 text-slate-700',
-  checked_in: 'bg-sky-100 text-sky-800',
-  checked_out: 'bg-indigo-100 text-indigo-800',
+  not_started: 'chip-neutral',
+  checked_in: 'chip-info',
+  checked_out: 'chip-done',
 };
 
-const base = 'inline-block rounded-full px-2 py-0.5 text-xs font-medium';
-
 export function ParticipationBadge({ value }: { value: Participation }) {
-  return <span className={`${base} ${PARTICIPATION_STYLE[value]}`}>{PARTICIPATION_LABELS[value]}</span>;
+  return <span className={`chip ${PARTICIPATION_STYLE[value]}`}>{PARTICIPATION_LABELS[value]}</span>;
 }
 
 export function AttendanceBadge({ value }: { value: Attendance }) {
-  return <span className={`${base} ${ATTENDANCE_STYLE[value]}`}>{ATTENDANCE_LABELS[value]}</span>;
+  return <span className={`chip ${ATTENDANCE_STYLE[value]}`}>{ATTENDANCE_LABELS[value]}</span>;
 }

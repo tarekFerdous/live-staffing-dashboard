@@ -1,6 +1,59 @@
+# Local mode: the whole app, live updates included, with no AWS account.
+#   docker compose up        DynamoDB Local + local API/live channel + Vite on http://localhost:5173
+#   pnpm reset               creates the tables and seeds the shift (run once after `up`, and any time after)
+# Source is bind-mounted, so code changes reload in seconds (API restarts, the page hot-reloads).
 services:
   dynamodb:
     image: amazon/dynamodb-local:2.5.3
     command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
     ports:
       - '8000:8000'
+
+  app:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm dev"
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      VITE_HOST: 0.0.0.0
+      CHOKIDAR_USEPOLLING: 'true'
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+      CI: 'true' # non-interactive pnpm install
+      # Keep pnpm's package store out of the bind-mounted repo.
+      npm_config_store_dir: /pnpm-store
+    # Only the page's origin: /api and the live channel are proxied through it (the API stays on :3001 inside).
+    ports:
+      - '5173:5173'
+    volumes:
+      - .:/app
+      # Linux node_modules live in volumes, so they never clash with the host's.
+      - node_modules:/app/node_modules
+      - domain_modules:/app/packages/domain/node_modules
+      - store_modules:/app/packages/store/node_modules
+      - functions_modules:/app/packages/functions/node_modules
+      - web_modules:/app/packages/web/node_modules
+      - infra_modules:/app/packages/infra/node_modules
+      - pnpm_store:/pnpm-store
+    depends_on:
+      - dynamodb
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:5173/api/config').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+volumes:
+  node_modules:
+  domain_modules:
+  store_modules:
+  functions_modules:
+  web_modules:
+  infra_modules:
+  pnpm_store:

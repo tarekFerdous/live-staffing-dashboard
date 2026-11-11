@@ -135,6 +135,18 @@ export class AppStack extends Stack {
     });
     const subscribeKey = Object.values(eventApi.apiKeys)[0]!;
 
+    // Tells the page where the live channel is, so one web build runs locally and here.
+    const getConfig = this.fn('GetConfig', 'getConfig.ts', {
+      EVENTS_HTTP_HOST: eventApi.httpDns,
+      EVENTS_REALTIME_HOST: eventApi.realtimeDns,
+      EVENTS_API_KEY: subscribeKey.attrApiKey,
+    });
+    api.addRoutes({
+      path: '/api/config',
+      methods: [apigw.HttpMethod.GET],
+      integration: new HttpLambdaIntegration('GetConfigIntegration', getConfig),
+    });
+
     const publishDlq = new sqs.Queue(this, 'PublishDlq', {
       retentionPeriod: Duration.days(14),
       enforceSSL: true,
@@ -204,17 +216,7 @@ export class AppStack extends Stack {
     });
 
     new s3deploy.BucketDeployment(this, 'DeploySite', {
-      sources: [
-        s3deploy.Source.asset(props.siteAssetPath),
-        // Read by the page at start-up, so one build works against any stack.
-        s3deploy.Source.jsonData('config.json', {
-          realtime: {
-            httpHost: eventApi.httpDns,
-            realtimeHost: eventApi.realtimeDns,
-            apiKey: subscribeKey.attrApiKey,
-          },
-        }),
-      ],
+      sources: [s3deploy.Source.asset(props.siteAssetPath)],
       destinationBucket: bucket,
       distribution,
       distributionPaths: ['/*'],
@@ -230,7 +232,7 @@ export class AppStack extends Stack {
     new CfnOutput(this, 'ShiftId', { value: SEED.shift.id });
     new CfnOutput(this, 'EventsHttpHost', { value: eventApi.httpDns });
     new CfnOutput(this, 'EventsRealtimeHost', { value: eventApi.realtimeDns });
-    // Subscribe-only and already public in config.json; printed for the CI smoke test.
+    // Subscribe-only and already public on /api/config; printed for reference.
     new CfnOutput(this, 'EventsApiKey', { value: subscribeKey.attrApiKey });
     new CfnOutput(this, 'PublishDlqUrl', { value: publishDlq.queueUrl });
   }

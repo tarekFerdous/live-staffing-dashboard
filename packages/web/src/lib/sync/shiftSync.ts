@@ -41,6 +41,8 @@ export type SyncOptions = {
   api: SyncApi;
   /** Called with every new snapshot the sync produces (write it into the query cache). */
   onSnapshot(snapshot: Snapshot): void;
+  /** Called, before `onSnapshot`, for every change applied from a full event (live push or catch-up). */
+  onEvent?(event: ShiftEventMessage): void;
   online?: boolean;
   now?: () => number;
   random?: () => number;
@@ -122,10 +124,11 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
   }
 
   /** Applies a change only when it is exactly the next seq. */
-  function apply(seq: number, row: Worker): 'applied' | 'old' | 'gap' {
+  function apply(seq: number, row: Worker, event?: ShiftEventMessage): 'applied' | 'old' | 'gap' {
     if (!snapshot) return 'gap';
     if (seq <= snapshot.seq) return 'old';
     if (seq > snapshot.seq + 1) return 'gap';
+    if (event) opts.onEvent?.(event);
     publish(withRow(snapshot, seq, row));
     return 'applied';
   }
@@ -136,7 +139,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
 
   function receive(seq: number, row: Worker, live?: ShiftEventMessage) {
     noteSeq(seq);
-    const result = apply(seq, row);
+    const result = apply(seq, row, live);
     if (result === 'applied' && live) setState({ latencyMs: Math.max(0, now() - Date.parse(live.at)) });
     if (result === 'gap') void catchUp();
   }
@@ -154,7 +157,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
         const page = await opts.api.fetchEvents(opts.shiftId, snapshot!.seq);
         for (const e of page.events) {
           noteSeq(e.seq);
-          apply(e.seq, e.row);
+          apply(e.seq, e.row, e);
         }
         if (page.hasMore) {
           const fresh = await opts.api.fetchSnapshot(opts.shiftId);

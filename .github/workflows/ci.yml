@@ -35,6 +35,28 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  # Local mode with no AWS credentials: compose up, reset, act, receive the event over the local ws.
+  local-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: docker compose up (waits for the app's health check)
+        run: docker compose up -d --wait --wait-timeout 300
+      - run: pnpm reset
+      - name: Live-update smoke test (local ws)
+        run: pnpm smoke:local
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down -v
+
   deploy:
     needs: checks
     # Pull requests never reach this job, so they never get AWS credentials.

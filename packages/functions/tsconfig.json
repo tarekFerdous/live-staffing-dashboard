@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
+  // DOM: the local-mode contract tests drive the browser's own WebSocket transport.
+  "compilerOptions": { "lib": ["ES2023", "DOM"] },
   "include": ["src"]
 }

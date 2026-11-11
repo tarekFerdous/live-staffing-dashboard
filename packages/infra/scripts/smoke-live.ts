@@ -1,26 +1,35 @@
-// Deployed smoke test for live updates (run by CI after deploy: `pnpm --filter @staffing/infra smoke:live`).
-// Subscribes to the shift channel with the browser's own transport and API key, performs
-// one action through the public API, and waits for that change to arrive on the socket.
+// Live-update smoke test, the same for both modes:
+//   pnpm smoke:local                              local mode (docker compose), http://localhost:5173
+//   pnpm --filter @staffing/infra smoke:live      the deployed stage (SiteUrl from cdk-outputs.json; CI after deploy)
+// Reads GET /api/config like the page does, subscribes to the shift channel with the browser's
+// own transport, performs one action through the public API, and waits for that change on the socket.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSyncTransport } from '../../web/src/lib/sync/appsyncTransport';
+import { appSyncTransport, loadRealtimeConfig } from '../../web/src/lib/sync/appsyncTransport';
 import { APP_STACK_NAME } from '../lib/config';
 
 const TIMEOUT_MS = 20_000;
+const SHIFT_ID = process.env.SHIFT_ID ?? 'harbourfront-gala';
 
-type Outputs = Record<string, string>;
 type Worker = { id: string; name: string; participation: string; attendance: string; version: number };
 
-const outputs: Outputs = JSON.parse(readFileSync(join(import.meta.dirname, '../cdk-outputs.json'), 'utf8'))[
-  APP_STACK_NAME
-];
-const need = (k: string) => {
-  const v = outputs[k];
-  if (!v) throw new Error(`cdk-outputs.json has no ${k}`);
-  return v;
-};
-const siteUrl = need('SiteUrl');
-const shiftId = need('ShiftId');
+function baseUrlFromArgs(): string | undefined {
+  const i = process.argv.indexOf('--base-url');
+  return i >= 0 ? process.argv[i + 1] : process.env.BASE_URL;
+}
+
+function siteUrlFromOutputs(): string {
+  const outputs = JSON.parse(readFileSync(join(import.meta.dirname, '../cdk-outputs.json'), 'utf8'))[
+    APP_STACK_NAME
+  ] as Record<string, string> | undefined;
+  if (!outputs?.SiteUrl)
+    throw new Error('cdk-outputs.json has no SiteUrl. Deploy first, or pass --base-url.');
+  return outputs.SiteUrl;
+}
+
+const siteUrl = (baseUrlFromArgs() ?? siteUrlFromOutputs()).replace(/\/$/, '');
+const shiftId = SHIFT_ID;
+console.log(`Smoke test against ${siteUrl}`);
 
 function withTimeout<T>(p: Promise<T>, what: string): Promise<T> {
   return Promise.race([
@@ -52,11 +61,16 @@ const ready = new Promise<void>((resolve, reject) => {
   failed = reject;
 });
 
-const transport = appSyncTransport({
-  httpHost: need('EventsHttpHost'),
-  realtimeHost: need('EventsRealtimeHost'),
-  apiKey: need('EventsApiKey'),
-});
+const realtime = await loadRealtimeConfig(
+  ((input: string, init?: RequestInit) => fetch(new URL(input, siteUrl), init)) as typeof fetch,
+  `${siteUrl}/`,
+);
+if (!realtime) {
+  console.error(`${siteUrl}/api/config has no realtime endpoint`);
+  process.exit(1);
+}
+console.log(`Live channel: ${realtime.url}`);
+const transport = appSyncTransport(realtime);
 const channel = `/shifts/${shiftId}`;
 const conn = transport.connect(channel, {
   onSubscribed: () => subscribed(),

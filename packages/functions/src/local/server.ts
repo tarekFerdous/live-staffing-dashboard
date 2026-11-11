@@ -1,4 +1,5 @@
-// Local dev API: `pnpm dev` (needs `pnpm db:up` and `pnpm reset` once).
+// Local mode: the API, the change feed and the live channel in one process, no AWS needed.
+// `docker compose up` runs it (see README); `pnpm dev` runs it against `pnpm db:up`.
 import {
   createClients,
   createShiftStore,
@@ -6,16 +7,31 @@ import {
   LOCAL_IDEMPOTENCY_TABLE,
   LOCAL_TABLE,
 } from '@staffing/store';
+import { makeGetConfigHandler } from '../getConfig';
 import { makeGetEventsHandler } from '../getEvents';
 import { makeGetShiftHandler } from '../getShift';
 import { makeActionHandler } from '../postAction';
+import { makePublisher } from '../publisher';
 import { createLocalServer } from './adapter';
+import { createLocalChangeFeed, localStreamsClient } from './changeFeed';
+import { createLocalEvents, EVENTS_PATH } from './events';
 
 const port = Number(process.env.PORT ?? 3001);
-const { client, doc } = createClients({ endpoint: process.env.DYNAMODB_ENDPOINT ?? LOCAL_ENDPOINT });
-const store = createShiftStore(doc, process.env.TABLE_NAME ?? LOCAL_TABLE);
+const endpoint = process.env.DYNAMODB_ENDPOINT ?? LOCAL_ENDPOINT;
+const tableName = process.env.TABLE_NAME ?? LOCAL_TABLE;
+const { client, doc } = createClients({ endpoint });
+const store = createShiftStore(doc, tableName);
 
-createLocalServer([
+const server = createLocalServer([
+  {
+    method: 'GET',
+    path: '/api/config',
+    // A path: the browser connects to its own origin, which proxies to this server.
+    handler: makeGetConfigHandler({
+      mode: 'local',
+      realtime: { url: EVENTS_PATH, httpHost: 'localhost', apiKey: 'local' },
+    }),
+  },
   { method: 'GET', path: '/api/shifts/{shiftId}', handler: makeGetShiftHandler(store) },
   { method: 'GET', path: '/api/shifts/{shiftId}/events', handler: makeGetEventsHandler(store) },
   {
@@ -26,4 +42,20 @@ createLocalServer([
       idempotency: { client, tableName: process.env.IDEMPOTENCY_TABLE ?? LOCAL_IDEMPOTENCY_TABLE },
     }),
   },
-]).listen(port, () => console.log(`Local API on http://localhost:${port}`));
+]);
+
+const events = createLocalEvents(server);
+const feed = createLocalChangeFeed({ client, streams: localStreamsClient(endpoint), tableName }).start(
+  makePublisher(events.publish),
+);
+
+server.listen(port, () => console.log(`Local API and live channel on http://localhost:${port}`));
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, async () => {
+    await feed.stop();
+    await events.close();
+    server.close();
+    process.exit(0);
+  });
+}

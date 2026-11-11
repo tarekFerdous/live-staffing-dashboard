@@ -367,6 +367,23 @@ describe('shift sync', () => {
     expect(s.sync.getState().latencyMs).toBe(180);
   });
 
+  it('reports each applied event once, in seq order, from pushes and catch-up alike', async () => {
+    const seen: number[] = [];
+    const s = await live({ onEvent: (e) => seen.push(e.seq) });
+    const e1 = s.server.act('amara', 'invite');
+    s.t.last.send(e1);
+    s.t.last.send(e1); // duplicate
+    s.server.act('liam', 'invite'); // push lost
+    const e3 = s.server.act('sofia', 'invite');
+    s.t.last.send(e3); // gap → catch-up reads 2 and 3
+    await flush();
+    const e4 = s.server.act('amara', 'accept');
+    s.sync.ingest(e4.seq, e4.row); // from an action response: no full event to report
+    s.t.last.send(e4);
+    await flush();
+    expect(seen).toEqual([1, 2, 3]);
+  });
+
   it('applies a change from an action response, then ignores its push', async () => {
     const s = await live();
     const e1 = s.server.act('amara', 'invite');

@@ -14,15 +14,18 @@
   "dependencies": {
     "@aws-lambda-powertools/idempotency": "^2.36.0",
     "@aws-sdk/client-dynamodb": "^3.1166.0",
+    "@aws-sdk/client-dynamodb-streams": "^3.1166.0",
     "@aws-sdk/lib-dynamodb": "^3.1166.0",
     "@aws-sdk/util-dynamodb": "^3.996.9",
     "@smithy/signature-v4": "^5.7.5",
     "@staffing/domain": "workspace:*",
-    "@staffing/store": "workspace:*"
+    "@staffing/store": "workspace:*",
+    "ws": "^8.22.2"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.146",
     "@types/node": "^22.10.2",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.19.2"
   }
 }

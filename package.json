@@ -16,6 +16,7 @@
     "db:down": "docker compose down",
     "reset": "pnpm --filter @staffing/store reset",
     "dev": "pnpm --parallel --filter @staffing/functions --filter @staffing/web dev",
+    "smoke:local": "pnpm --filter @staffing/infra smoke:live --base-url http://localhost:5173",
     "build:web": "pnpm --filter @staffing/web build",
     "deploy": "pnpm build:web && pnpm --filter @staffing/infra deploy:app",
     "deploy:hotswap": "pnpm build:web && pnpm --filter @staffing/infra deploy:hotswap",

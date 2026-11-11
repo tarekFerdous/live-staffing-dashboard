@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { appSyncTransport, loadRealtimeConfig, type WebSocketFactory } from './appsyncTransport';
 
 const CFG = {
+  url: 'wss://abc.appsync-realtime-api.ca-central-1.amazonaws.com/event/realtime',
   httpHost: 'abc.appsync-api.ca-central-1.amazonaws.com',
-  realtimeHost: 'abc.appsync-realtime-api.ca-central-1.amazonaws.com',
   apiKey: 'da2-key',
 };
 
@@ -63,7 +63,7 @@ const decodeHeader = (protocol: string) => {
 describe('AppSync Events transport', () => {
   it('connects with the API key in the subprotocol header, then subscribes after the ack', () => {
     const { socket, handlers } = setup();
-    expect(socket.url).toBe(`wss://${CFG.realtimeHost}/event/realtime`);
+    expect(socket.url).toBe(CFG.url);
     expect(socket.protocols[0]).toBe('aws-appsync-event-ws');
     expect(decodeHeader(socket.protocols[1]!)).toEqual({ host: CFG.httpHost, 'x-api-key': CFG.apiKey });
 
@@ -131,11 +131,34 @@ describe('loadRealtimeConfig', () => {
   const respond = (status: number, body: string) =>
     (async () => new Response(body, { status })) as typeof fetch;
 
-  it('reads the realtime block from /config.json', async () => {
-    expect(await loadRealtimeConfig(respond(200, JSON.stringify({ realtime: CFG })))).toEqual(CFG);
+  it('reads the cloud realtime block from /api/config', async () => {
+    const fetchFn = vi.fn(respond(200, JSON.stringify({ mode: 'cloud', realtime: CFG })));
+    expect(await loadRealtimeConfig(fetchFn)).toEqual(CFG);
+    expect(fetchFn.mock.calls[0]![0]).toBe('/api/config');
   });
 
-  it('returns null (live updates off) when the file is missing, not JSON or incomplete', async () => {
+  it("resolves local mode's path against the page, with the matching ws scheme", async () => {
+    const local = JSON.stringify({
+      mode: 'local',
+      realtime: { url: '/event/realtime', httpHost: 'localhost', apiKey: 'local' },
+    });
+    expect(await loadRealtimeConfig(respond(200, local), 'http://localhost:5173/manager')).toEqual({
+      url: 'ws://localhost:5173/event/realtime',
+      httpHost: 'localhost',
+      apiKey: 'local',
+    });
+    expect((await loadRealtimeConfig(respond(200, local), 'https://example.com/worker'))?.url).toBe(
+      'wss://example.com/event/realtime',
+    );
+  });
+
+  it('returns null (live updates off) when realtime is null', async () => {
+    expect(
+      await loadRealtimeConfig(respond(200, JSON.stringify({ mode: 'local', realtime: null }))),
+    ).toBeNull();
+  });
+
+  it('returns null (live updates off) when the config is missing, not JSON or incomplete', async () => {
     expect(await loadRealtimeConfig(respond(404, ''))).toBeNull();
     expect(await loadRealtimeConfig(respond(200, '<!doctype html>'))).toBeNull();
     expect(

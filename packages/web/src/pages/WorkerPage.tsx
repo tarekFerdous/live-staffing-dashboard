@@ -21,7 +21,9 @@ const NO_ACTION_HINT: Record<Participation, string> = {
 };
 
 function noActionHint(w: WorkerState): string {
-  return w.attendance === 'checked_out' ? "You've checked out. This shift is complete." : NO_ACTION_HINT[w.participation];
+  return w.attendance === 'checked_out'
+    ? "You've checked out. This shift is complete."
+    : NO_ACTION_HINT[w.participation];
 }
 
 function WorkerView({ snapshot }: { snapshot: Snapshot }) {
@@ -36,15 +38,15 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <label htmlFor="worker-select" className="block text-sm font-medium text-slate-700">
+      <div className="card p-4">
+        <label htmlFor="worker-select" className="block text-sm font-semibold">
           Who are you?
         </label>
         <select
           id="worker-select"
           value={me ? me.id : ''}
           onChange={(e) => choose(e.target.value)}
-          className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 sm:w-72"
+          className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-fg sm:w-72"
         >
           <option value="" disabled>
             Choose your name…
@@ -57,46 +59,46 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
         </select>
       </div>
 
-      <ShiftDetails shift={shift} />
-
       {me ? (
-        <section aria-labelledby="my-status" className="rounded-lg border border-slate-200 bg-white p-4">
+        <section aria-labelledby="my-status" className="card p-4">
           <h2 id="my-status" className="text-lg font-semibold">
             {me.name}, your status
           </h2>
-          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-slate-500">Participation</dt>
+          <dl className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
+            <dt className="text-muted">Participation</dt>
             <dd data-testid="my-participation">
               <ParticipationBadge value={me.participation} />
             </dd>
-            <dt className="text-slate-500">Attendance</dt>
+            <dt className="text-muted">Attendance</dt>
             <dd data-testid="my-attendance">
               <AttendanceBadge value={me.attendance} />
             </dd>
             {me.checkedInAt && (
               <>
-                <dt className="text-slate-500">Checked in</dt>
-                <dd>{formatTime(me.checkedInAt, shift.timezone)}</dd>
+                <dt className="text-muted">Checked in</dt>
+                <dd className="tabular-nums">{formatTime(me.checkedInAt, shift.timezone)}</dd>
               </>
             )}
             {me.checkedOutAt && (
               <>
-                <dt className="text-slate-500">Checked out</dt>
-                <dd>{formatTime(me.checkedOutAt, shift.timezone)}</dd>
+                <dt className="text-muted">Checked out</dt>
+                <dd className="tabular-nums">{formatTime(me.checkedOutAt, shift.timezone)}</dd>
               </>
             )}
           </dl>
           <div className="mt-4">
             {WORKER_ACTIONS.some((a) => canApply(me, a)) ? (
-              <ActionButtons key={me.id} worker={me} actions={WORKER_ACTIONS} />
+              <ActionButtons key={me.id} worker={me} actions={WORKER_ACTIONS} optimistic />
             ) : (
-              <p className="text-sm text-slate-600">{noActionHint(me)}</p>
+              <p className="text-sm text-muted">{noActionHint(me)}</p>
             )}
           </div>
         </section>
       ) : (
-        <p className="text-slate-600">Choose your name to see your status.</p>
+        <p className="text-muted">Choose your name to see your status.</p>
       )}
+
+      <ShiftDetails shift={shift} />
     </div>
   );
 }
@@ -105,7 +107,7 @@ export function WorkerPage() {
   const query = useSnapshot();
   return (
     <>
-      <h1 className="mb-4 text-2xl font-bold">My shift</h1>
+      <h1 className="mb-4 text-2xl font-bold tracking-tight">My shift</h1>
       <QueryState query={query}>{(snapshot) => <WorkerView snapshot={snapshot} />}</QueryState>
     </>
   );

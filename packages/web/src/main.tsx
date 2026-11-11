@@ -5,7 +5,8 @@ import { App, createQueryClient, ROUTER_FUTURE } from './App';
 import { appSyncTransport, loadRealtimeConfig } from './lib/sync/appsyncTransport';
 import './index.css';
 
-// The deploy writes /config.json with the realtime endpoint; without it the app refetches after actions.
+// GET /api/config says where the live channel is (AppSync Events in the cloud, the local ws
+// server in local mode), so one build runs in both. Without one the app refetches after actions.
 const realtime = await loadRealtimeConfig();
 
 createRoot(document.getElementById('root')!).render(

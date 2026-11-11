@@ -5,6 +5,10 @@ import { jsonResponse, makeSnapshot, renderApp, stubFetch, worker } from '../tes
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** Snapshot reads only (the activity timeline reads the event log separately). */
+const snapshotReads = (fetch: ReturnType<typeof stubFetch>) =>
+  (fetch.mock.calls as unknown as [string][]).filter(([url]) => !url.includes('/events')).length;
+
 describe('manager page', () => {
   it('renders the shift details, the worker table and the counts', async () => {
     const fetch = stubFetch(jsonResponse(200, makeSnapshot()));
@@ -85,7 +89,7 @@ describe('manager page', () => {
     expect(
       await screen.findByRole('heading', { name: 'Winter Gala — Bar & Floor Staff' }),
     ).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(snapshotReads(fetch)).toBe(2);
   });
 
   it("shows the server's message for an unknown shift", async () => {
@@ -105,6 +109,6 @@ describe('manager page', () => {
 
     renderApp('/manager'); // a refresh: new query cache, same backend state
     expect(await screen.findByRole('cell', { name: 'Invited' })).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(snapshotReads(fetch)).toBe(2);
   });
 });
