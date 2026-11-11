@@ -1,9 +1,9 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeApi } from '../test/fakeApi';
 import { fakeTransport } from '../test/fakeTransport';
-import { jsonResponse, makeSnapshot, renderApp, worker } from '../test/render';
+import { detail, jsonResponse, makeSnapshot, renderApp, trackerOf, worker, workerCard } from '../test/render';
 import { WORKER_STORAGE_KEY } from './WorkerPage';
 
 beforeEach(() => localStorage.setItem(WORKER_STORAGE_KEY, 'amara'));
@@ -110,10 +110,9 @@ describe('manager actions are not optimistic', () => {
     const button = await screen.findByRole('button', { name: 'Invite Amara Okafor' });
     const release = api.holdPosts();
     await userEvent.click(button);
-    const row = screen.getByRole('rowheader', { name: 'Amara Okafor' }).closest('tr')!;
-    expect(within(row).getByText('Uninvited')).toBeInTheDocument();
-    expect(within(row).queryByText('Invited')).toBeNull();
+    expect(trackerOf('Amara Okafor')).toHaveTextContent('Not invited');
+    expect(detail(workerCard('Amara Okafor'), 'Participation')).toHaveTextContent('Uninvited');
     release();
-    expect(await within(row).findByText('Invited')).toBeInTheDocument();
+    await waitFor(() => expect(trackerOf('Amara Okafor')).toHaveTextContent('Step 1 of 4: Invited'));
   });
 });

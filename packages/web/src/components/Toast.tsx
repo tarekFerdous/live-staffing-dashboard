@@ -33,7 +33,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role={t.tone === 'error' ? 'alert' : 'status'}
-            className={`flex w-full max-w-md items-start gap-3 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
+            className={`flex w-full max-w-md items-start gap-3 rounded-2xl px-4 py-3 text-sm font-medium shadow-lg ${
               t.tone === 'error' ? 'toast-error' : 'toast'
             }`}
           >
@@ -42,7 +42,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               aria-label="Dismiss"
               onClick={() => dismiss(t.id)}
-              className="-m-1 rounded p-1 opacity-80 hover:opacity-100"
+              className="-m-1 rounded-full p-1 opacity-80 hover:opacity-100"
             >
               ✕
             </button>

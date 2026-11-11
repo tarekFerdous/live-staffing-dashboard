@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { jsonResponse, makeSnapshot, renderApp, stubFetch, worker } from '../test/render';
+import { detail, jsonResponse, makeSnapshot, renderApp, stubFetch, worker } from '../test/render';
 import { WORKER_STORAGE_KEY } from './WorkerPage';
 
 const snapshot = makeSnapshot([
@@ -34,7 +34,7 @@ describe('worker page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Who are you?'), 'Liam Chen');
     expect(screen.getByTestId('my-participation')).toHaveTextContent('Accepted');
     expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in');
-    expect(screen.getByText(/5:10\sp\.m\./)).toBeInTheDocument();
+    expect(detail(document.body, 'Checked in')).toHaveTextContent(/5:10\sp\.m\./);
 
     await userEvent.selectOptions(screen.getByLabelText('Who are you?'), 'Amara Okafor');
     expect(screen.getByTestId('my-participation')).toHaveTextContent('Invited');

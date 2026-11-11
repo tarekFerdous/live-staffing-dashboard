@@ -1,17 +1,16 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WORKER_STORAGE_KEY } from './WorkerPage';
 import { fakeApi } from '../test/fakeApi';
 import { fakeTransport } from '../test/fakeTransport';
-import { makeSnapshot, renderApp } from '../test/render';
+import { makeSnapshot, renderApp, findWorkerCard, trackerOf } from '../test/render';
 
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
 });
 
-const row = (name: string) => screen.getByRole('rowheader', { name }).closest('tr')!;
 const snapshotGets = (api: ReturnType<typeof fakeApi>) =>
   api.calls.filter((c) => c.method === 'GET' && !c.url.includes('/events')).length;
 
@@ -19,7 +18,7 @@ async function liveManager() {
   const api = fakeApi(makeSnapshot());
   const t = fakeTransport();
   renderApp('/manager', { transport: t.transport });
-  await screen.findByRole('table');
+  await findWorkerCard('Amara Okafor');
   await act(async () => t.last.subscribed());
   return { api, t };
 }
@@ -38,7 +37,7 @@ describe('live updates', () => {
       t.last.send(accept);
     });
 
-    expect(await within(row('Amara Okafor')).findByText('Accepted')).toBeInTheDocument();
+    await vi.waitFor(() => expect(trackerOf('Amara Okafor')).toHaveTextContent('Accepted'));
     expect(screen.getByTestId('count-filled')).toHaveTextContent('1');
     expect(screen.getByTestId('count-remaining')).toHaveTextContent('2');
     expect(snapshotGets(api)).toBe(gets); // pushed, not refetched
@@ -55,7 +54,7 @@ describe('live updates', () => {
     await act(async () => t.last.send(out));
     await vi.waitFor(() => expect(screen.getByTestId('count-checked-in')).toHaveTextContent('0'));
     expect(screen.getByTestId('count-checked-out')).toHaveTextContent('1');
-    expect(within(row('Liam Chen')).getByText('Checked out')).toBeInTheDocument();
+    expect(trackerOf('Liam Chen')).toHaveTextContent('Checked out');
   });
 
   it('fills a missed event from the catch-up API', async () => {
@@ -63,8 +62,8 @@ describe('live updates', () => {
     api.act('amara', 'invite'); // its push is lost
     const e2 = api.act('liam', 'invite');
     await act(async () => t.last.send(e2));
-    await vi.waitFor(() => expect(within(row('Amara Okafor')).getByText('Invited')).toBeInTheDocument());
-    expect(within(row('Liam Chen')).getByText('Invited')).toBeInTheDocument();
+    await vi.waitFor(() => expect(trackerOf('Amara Okafor')).toHaveTextContent('Invited'));
+    expect(trackerOf('Liam Chen')).toHaveTextContent('Invited');
     expect(api.calls.some((c) => c.url.endsWith('/events?after=0'))).toBe(true);
   });
 
@@ -85,7 +84,7 @@ describe('live updates', () => {
     const { api } = await liveManager();
     const gets = snapshotGets(api);
     await userEvent.click(screen.getByRole('button', { name: 'Invite Amara Okafor' }));
-    await vi.waitFor(() => expect(within(row('Amara Okafor')).getByText('Invited')).toBeInTheDocument());
+    await vi.waitFor(() => expect(trackerOf('Amara Okafor')).toHaveTextContent('Invited'));
     expect(snapshotGets(api)).toBe(gets);
   });
 });

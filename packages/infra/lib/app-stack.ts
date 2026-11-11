@@ -12,7 +12,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import { marshall } from '@aws-sdk/util-dynamodb';
-import { EVT_PREFIX, IDEMPOTENCY_THROUGHPUT, seedItems, SEED } from '@staffing/store';
+import { EVT_PREFIX, IDEMPOTENCY_THROUGHPUT, META_SK, seedItems, SEED } from '@staffing/store';
 import type { Construct } from 'constructs';
 
 const REPO_ROOT = join(import.meta.dirname, '../../..');
@@ -99,6 +99,15 @@ export class AppStack extends Stack {
       integration: new HttpLambdaIntegration('PostActionIntegration', postAction),
     });
 
+    // Demo reset: puts the seed back and bumps the epoch (no auth: a demo affordance only).
+    const demoReset = this.fn('DemoReset', 'demoReset.ts', { TABLE_NAME: table.tableName });
+    table.grantReadWriteData(demoReset);
+    api.addRoutes({
+      path: '/api/demo/reset',
+      methods: [apigw.HttpMethod.POST],
+      integration: new HttpLambdaIntegration('DemoResetIntegration', demoReset),
+    });
+
     // ── Live updates: table stream → publisher → AppSync Events → browsers ──
     // Browsers hold a subscribe-only API key (a demo limit; Cognito would replace it).
     // Publishing is IAM-only, so only the publisher's role can put events on a channel.
@@ -160,10 +169,16 @@ export class AppStack extends Stack {
         onFailure: new SqsDlq(publishDlq),
         // Only new event-log items: every committed change writes exactly one, and
         // a cancelled transaction writes none, so nothing rolled back is ever pushed.
+        // Plus new META items: only a reset inserts META (actions update it), and the
+        // publisher turns that into a live reset message.
         filters: [
           lambda.FilterCriteria.filter({
             eventName: lambda.FilterRule.isEqual('INSERT'),
             dynamodb: { Keys: { SK: { S: lambda.FilterRule.beginsWith(EVT_PREFIX) } } },
+          }),
+          lambda.FilterCriteria.filter({
+            eventName: lambda.FilterRule.isEqual('INSERT'),
+            dynamodb: { Keys: { SK: { S: lambda.FilterRule.isEqual(META_SK) } } },
           }),
         ],
       }),

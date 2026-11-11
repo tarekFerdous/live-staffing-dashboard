@@ -3,7 +3,7 @@ import type { ShiftStore } from '@staffing/store';
 import { error, json, withErrors, type HttpHandler } from './http';
 
 /**
- * GET /api/shifts/{shiftId}/events?after=<seq> → `{ events, hasMore }`.
+ * GET /api/shifts/{shiftId}/events?after=<seq> → `{ events, hasMore, epoch }`.
  * Events are oldest first, at most MAX_EVENTS_PAGE of them; when `hasMore` is true
  * the client loads the snapshot instead of paging through the log.
  */
@@ -19,13 +19,19 @@ export function makeGetEventsHandler(store: ShiftStore): HttpHandler {
 
     // One extra item tells us whether more exist without a second read.
     const events = await store.listEvents(shiftId, Number(raw), MAX_EVENTS_PAGE + 1);
+    // Read after the events: if a reset lands in between, the newer epoch makes the
+    // client reload the snapshot, so the mismatch is harmless (the reverse would not be).
+    const epoch = await store.getEpoch(shiftId);
+    if (epoch === null) return error(404, 'SHIFT_NOT_FOUND', `Shift "${shiftId}" was not found.`);
     const page: EventsPage = {
-      events: events.slice(0, MAX_EVENTS_PAGE).map(({ seq, type, workerId, row, at }) => ({
+      epoch,
+      events: events.slice(0, MAX_EVENTS_PAGE).map(({ seq, type, workerId, row, at, epoch: e }) => ({
         seq,
         type,
         workerId,
         row,
         at,
+        ...(e !== undefined && { epoch: e }),
       })),
       hasMore: events.length > MAX_EVENTS_PAGE,
     };

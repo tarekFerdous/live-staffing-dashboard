@@ -54,6 +54,7 @@ describe('publisher Lambda', () => {
     expect(events).toHaveLength(1);
     const body = JSON.parse(events[0]!);
     expect(body).toEqual({
+      kind: 'event',
       seq: 7,
       type: 'accept',
       workerId: 'amara',
@@ -64,13 +65,24 @@ describe('publisher Lambda', () => {
     expect(ShiftEventSchema.safeParse(body).success).toBe(true);
   });
 
-  it('publishes nothing for worker rows, META, modifies or removes', async () => {
+  it('turns a META insert (a reset) into a reset message with the epoch on the shift channel', async () => {
+    const publish = vi.fn(async () => {});
+    const pk = shiftPk('harbourfront-gala');
+    await makePublisher(publish)(stream(record({ PK: pk, SK: META_SK, seq: 0, epoch: 4 })));
+    expect(publish).toHaveBeenCalledWith('/shifts/harbourfront-gala', [
+      JSON.stringify({ kind: 'reset', epoch: 4 }),
+    ]);
+  });
+
+  it('publishes nothing for worker rows, META updates, modifies or removes', async () => {
     const publish = vi.fn(async () => {});
     const pk = shiftPk('harbourfront-gala');
     await makePublisher(publish)(
       stream(
-        record({ PK: pk, SK: META_SK, seq: 7 }),
+        record({ PK: pk, SK: META_SK, seq: 7, epoch: 1 }, 'MODIFY'),
+        record({ PK: pk, SK: META_SK, seq: 7, epoch: 1 }, 'REMOVE'),
         record({ PK: pk, SK: workerSk('amara'), ...row }),
+        record({ PK: pk, SK: workerSk('amara'), ...row }, 'REMOVE'),
         record(evtItem(), 'MODIFY'),
         record(evtItem(), 'REMOVE'),
       ),
@@ -83,6 +95,19 @@ describe('publisher Lambda', () => {
     await makePublisher(publish)(stream(record(evtItem(1)), record(evtItem(2))));
     const seqs = publish.mock.calls.map((c) => JSON.parse((c as unknown as [string, string[]])[1][0]!).seq);
     expect(seqs).toEqual([1, 2]);
+  });
+
+  it('records the commit-to-publisher and publish timings of each published event (not of resets)', async () => {
+    const timings: [string, number][] = [];
+    await makePublisher(
+      async () => {},
+      () => PUBLISHED_AT,
+      (name, ms) => timings.push([name, ms]),
+    )(stream(record(evtItem()), record({ PK: shiftPk('harbourfront-gala'), SK: META_SK, seq: 0, epoch: 2 })));
+
+    expect(timings.map(([n]) => n)).toEqual(['CommitToPublisher', 'PublishDuration']);
+    expect(timings[0]![1]).toBe(120); // PUBLISHED_AT − AT
+    expect(timings[1]![1]).toBeGreaterThanOrEqual(0);
   });
 
   it('fails (so Lambda retries and then dead-letters) when the publish fails', async () => {

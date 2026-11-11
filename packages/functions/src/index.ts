@@ -3,6 +3,7 @@ export * from './getShift';
 export * from './getEvents';
 export * from './getConfig';
 export * from './postAction';
+export * from './demoReset';
 export * from './appsync';
 export * from './publisher';
 export * from './ports';

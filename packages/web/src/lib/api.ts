@@ -1,5 +1,7 @@
 import {
   ApiErrorSchema,
+  DemoResetResponseSchema,
+  type DemoResetResponse,
   EventsPageSchema,
   SnapshotSchema,
   WorkerSchema,
@@ -78,6 +80,11 @@ export async function postAction(
       body: JSON.stringify(body),
     },
   );
+}
+
+/** Puts the demo back to its seed. Open pages (this one included) reset through the live epoch. */
+export function resetDemo(): Promise<DemoResetResponse> {
+  return request('/api/demo/reset', DemoResetResponseSchema, { method: 'POST' });
 }
 
 export function newIdempotencyKey(): string {

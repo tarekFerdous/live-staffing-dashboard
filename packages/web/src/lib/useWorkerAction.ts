@@ -7,7 +7,8 @@ import { useLive } from './live';
 import { sameRow, withWorkerRow } from './optimistic';
 import { snapshotKey } from './useSnapshot';
 
-type Vars = { action: Action; expectedVersion: number; key: string };
+/** `epoch`: the shift's epoch when the user acted, so an answer from before a reset is ignored. */
+type Vars = { action: Action; expectedVersion: number; key: string; epoch: number | undefined };
 /** What onMutate predicted, so a refusal can undo exactly that. */
 type Context = { predicted: Worker; previous: Worker } | undefined;
 
@@ -69,14 +70,18 @@ export function useWorkerAction(
       queryClient.setQueryData<Snapshot>(key, withWorkerRow(snap, r.worker));
       return { predicted: r.worker, previous };
     },
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       live.pending.delete(worker.id);
+      // The shift was reset while this was in flight: the answer describes the old shift.
+      if (queryClient.getQueryData<Snapshot>(key)?.epoch !== vars.epoch) return;
       // The response carries the committed row: show it now rather than waiting for its push.
       showRow(res.worker);
       if (live.enabled && res.seq) live.ingest(res.seq, res.worker);
     },
-    onError: (err, _vars, ctx) => {
+    onError: (err, vars, ctx) => {
       live.pending.delete(worker.id);
+      // Dropped by a reset while in flight: nothing to undo and nothing to explain.
+      if (queryClient.getQueryData<Snapshot>(key)?.epoch !== vars.epoch) return;
       // Put the previous row back, unless a live change already replaced the prediction.
       if (ctx) showRow(ctx.previous, ctx.predicted);
       toast.show(err.message);
@@ -93,7 +98,12 @@ export function useWorkerAction(
     run: (action: Action) => {
       if (inFlight.current) return;
       inFlight.current = true;
-      mutation.mutate({ action, expectedVersion: worker.version, key: newIdempotencyKey() });
+      mutation.mutate({
+        action,
+        expectedVersion: worker.version,
+        key: newIdempotencyKey(),
+        epoch: queryClient.getQueryData<Snapshot>(key)?.epoch,
+      });
     },
     pending: mutation.isPending,
     pendingAction: mutation.isPending ? mutation.variables?.action : undefined,

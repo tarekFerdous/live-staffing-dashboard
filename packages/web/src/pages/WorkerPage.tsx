@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { ActionButtons } from '../components/ActionButtons';
 import { QueryState } from '../components/QueryState';
 import { ShiftDetails } from '../components/ShiftDetails';
-import { AttendanceBadge, ParticipationBadge } from '../components/StatusBadge';
+import { Card } from '../components/Card';
+import { WorkerIcon } from '../components/icons';
+import { WorkerCard } from '../components/WorkerCard';
 import { readStorage, writeStorage } from '../lib/storage';
-import { formatTime } from '../lib/time';
 import { useSnapshot } from '../lib/useSnapshot';
 
 export const WORKER_STORAGE_KEY = 'live-staffing.workerId';
@@ -37,16 +38,16 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="card p-4">
-        <label htmlFor="worker-select" className="block text-sm font-semibold">
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card icon={<WorkerIcon />} title="Worker" subtitle="Choose your name">
+        <label htmlFor="worker-select" className="mb-2 block text-sm font-semibold">
           Who are you?
         </label>
         <select
           id="worker-select"
           value={me ? me.id : ''}
           onChange={(e) => choose(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-fg sm:w-72"
+          className="w-full rounded-full bg-surface px-4 py-2.5 font-medium text-fg shadow-sm"
         >
           <option value="" disabled>
             Choose your name…
@@ -57,48 +58,28 @@ function WorkerView({ snapshot }: { snapshot: Snapshot }) {
             </option>
           ))}
         </select>
-      </div>
+        {!me && <p className="mt-3 text-sm text-muted">Choose your name to see your status.</p>}
+      </Card>
 
-      {me ? (
-        <section aria-labelledby="my-status" className="card p-4">
-          <h2 id="my-status" className="text-lg font-semibold">
-            {me.name}, your status
-          </h2>
-          <dl className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
-            <dt className="text-muted">Participation</dt>
-            <dd data-testid="my-participation">
-              <ParticipationBadge value={me.participation} />
-            </dd>
-            <dt className="text-muted">Attendance</dt>
-            <dd data-testid="my-attendance">
-              <AttendanceBadge value={me.attendance} />
-            </dd>
-            {me.checkedInAt && (
-              <>
-                <dt className="text-muted">Checked in</dt>
-                <dd className="tabular-nums">{formatTime(me.checkedInAt, shift.timezone)}</dd>
-              </>
-            )}
-            {me.checkedOutAt && (
-              <>
-                <dt className="text-muted">Checked out</dt>
-                <dd className="tabular-nums">{formatTime(me.checkedOutAt, shift.timezone)}</dd>
-              </>
-            )}
-          </dl>
-          <div className="mt-4">
-            {WORKER_ACTIONS.some((a) => canApply(me, a)) ? (
+      {me && (
+        <WorkerCard
+          worker={me}
+          timeZone={shift.timezone}
+          title={`${me.name}, your status`}
+          testIdPrefix="my"
+          footer={
+            WORKER_ACTIONS.some((a) => canApply(me, a)) ? (
               <ActionButtons key={me.id} worker={me} actions={WORKER_ACTIONS} optimistic />
             ) : (
-              <p className="text-sm text-muted">{noActionHint(me)}</p>
-            )}
-          </div>
-        </section>
-      ) : (
-        <p className="text-muted">Choose your name to see your status.</p>
+              <p className="text-center text-sm text-muted">{noActionHint(me)}</p>
+            )
+          }
+        />
       )}
 
-      <ShiftDetails shift={shift} />
+      <div className="md:col-span-2">
+        <ShiftDetails shift={shift} />
+      </div>
     </div>
   );
 }

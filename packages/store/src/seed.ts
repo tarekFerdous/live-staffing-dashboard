@@ -32,10 +32,26 @@ export const SEED: SeedData = {
  * Unset timestamps are left out rather than stored as NULL: the write path fills
  * them with `if_not_exists`, which treats a NULL attribute as already set.
  */
-export function seedItems(seed: SeedData = SEED): Record<string, unknown>[] {
+export function seedItems(seed: SeedData = SEED, epoch = 1): Record<string, unknown>[] {
+  return [seedMeta(seed, epoch), ...seedWorkers(seed)];
+}
+
+/** The shift's META item: `seq` 0 and the given epoch (a fresh deploy starts at 1). */
+export function seedMeta(seed: SeedData, epoch: number): Record<string, unknown> {
+  return {
+    PK: shiftPk(seed.shift.id),
+    SK: META_SK,
+    type: 'shift',
+    ...seed.shift,
+    seq: 0,
+    acceptedCount: 0,
+    epoch,
+  };
+}
+
+export function seedWorkers(seed: SeedData): Record<string, unknown>[] {
   const pk = shiftPk(seed.shift.id);
   return [
-    { PK: pk, SK: META_SK, type: 'shift', ...seed.shift, seq: 0, acceptedCount: 0 },
     ...seed.workers.map((w) => ({
       PK: pk,
       SK: workerSk(w.id),

@@ -54,12 +54,16 @@ describe('AppStack', () => {
     });
   });
 
+  it('serves POST /api/demo/reset from its own Lambda', () => {
+    t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'POST /api/demo/reset' });
+  });
+
   it('serves the event catch-up route from the HTTP API', () => {
     t.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'GET /api/shifts/{shiftId}/events' });
   });
 
   describe('live updates', () => {
-    it('feeds the publisher from the table stream, filtered to new EVT# items', () => {
+    it('feeds the publisher from the table stream, filtered to new EVT# items and new META items', () => {
       const mappings = Object.values(t.findResources('AWS::Lambda::EventSourceMapping'));
       expect(mappings).toHaveLength(1);
       const m = mappings[0]!.Properties;
@@ -69,10 +73,15 @@ describe('AppStack', () => {
       expect(m.BisectBatchOnFunctionError).toBe(true);
       expect(m.MaximumRetryAttempts).toBe(3);
       expect(m.DestinationConfig.OnFailure.Destination).toBeDefined();
-      expect(m.FilterCriteria.Filters).toHaveLength(1);
+      expect(m.FilterCriteria.Filters).toHaveLength(2);
       expect(JSON.parse(m.FilterCriteria.Filters[0].Pattern)).toEqual({
         eventName: ['INSERT'],
         dynamodb: { Keys: { SK: { S: [{ prefix: 'EVT#' }] } } },
+      });
+      // A reset writes META back last: that insert becomes the live reset message.
+      expect(JSON.parse(m.FilterCriteria.Filters[1].Pattern)).toEqual({
+        eventName: ['INSERT'],
+        dynamodb: { Keys: { SK: { S: ['META'] } } },
       });
     });
 

@@ -1,7 +1,16 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { jsonResponse, makeSnapshot, renderApp, stubFetch, worker } from '../test/render';
+import {
+  detail,
+  findWorkerCard,
+  jsonResponse,
+  makeSnapshot,
+  renderApp,
+  stubFetch,
+  worker,
+  workerCard,
+} from '../test/render';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -10,7 +19,7 @@ const snapshotReads = (fetch: ReturnType<typeof stubFetch>) =>
   (fetch.mock.calls as unknown as [string][]).filter(([url]) => !url.includes('/events')).length;
 
 describe('manager page', () => {
-  it('renders the shift details, the worker table and the counts', async () => {
+  it('renders the shift details, a card per worker and the counts', async () => {
     const fetch = stubFetch(jsonResponse(200, makeSnapshot()));
     renderApp('/manager');
 
@@ -20,16 +29,34 @@ describe('manager page', () => {
     expect(fetch).toHaveBeenCalledWith('/api/shifts/harbourfront-gala', expect.anything());
     expect(screen.getByText('Harbourfront Centre')).toBeInTheDocument();
 
-    const rows = within(screen.getByRole('table')).getAllByRole('row');
-    expect(rows).toHaveLength(4); // header + three workers
-    expect(within(rows[1]!).getByRole('rowheader')).toHaveTextContent('Amara Okafor');
-    expect(rows[1]).toHaveTextContent('Uninvited');
-    expect(rows[1]).toHaveTextContent('Not started');
+    const workers = within(screen.getByRole('region', { name: 'Workers' })).getAllByRole('region');
+    expect(workers.map((w) => within(w).getByRole('heading').textContent)).toEqual([
+      'Amara Okafor',
+      'Liam Chen',
+      'Sofia Rossi',
+    ]);
+    const amara = workerCard('Amara Okafor');
+    expect(detail(amara, 'Participation')).toHaveTextContent('Uninvited');
+    expect(detail(amara, 'Attendance')).toHaveTextContent('Not started');
+    expect(within(amara).getByTestId('tracker')).toHaveTextContent('Not invited');
+    expect(amara).toHaveTextContent('Not invited yet.');
+    for (const label of ['Invited', 'Responded', 'Checked in', 'Checked out']) {
+      expect(detail(amara, label)).toHaveTextContent('—');
+    }
+    expect(within(amara).getByRole('button', { name: 'Invite Amara Okafor' })).toBeEnabled();
 
     expect(screen.getByTestId('count-filled')).toHaveTextContent('0');
     expect(screen.getByTestId('count-remaining')).toHaveTextContent('3');
     expect(screen.getByTestId('count-checked-in')).toHaveTextContent('0');
     expect(screen.getByTestId('count-checked-out')).toHaveTextContent('0');
+
+    const staffing = screen.getByRole('region', { name: 'Staffing' });
+    expect(staffing).toHaveTextContent('No places filled yet. 3 places to go.');
+    const shift = screen.getByRole('region', { name: 'Winter Gala — Bar & Floor Staff' });
+    expect(within(shift).getByTestId('shift-time')).toHaveTextContent(/5:00\sp\.m\..*to\s11:00\sp\.m\./);
+    expect(within(shift).getByTestId('shift-date')).toHaveTextContent('Saturday, December 12, 2026');
+    expect(within(shift).getByTestId('shift-timezone')).toHaveTextContent('EST (America/Toronto)');
+    expect(screen.getByRole('region', { name: 'Activity' })).toBeInTheDocument();
   });
 
   it('derives counts from the rows, ignoring the server acceptedCount', async () => {
@@ -57,8 +84,14 @@ describe('manager page', () => {
     expect(screen.getByTestId('count-remaining')).toHaveTextContent('1');
     expect(screen.getByTestId('count-checked-in')).toHaveTextContent('1');
     expect(screen.getByTestId('count-checked-out')).toHaveTextContent('1');
+    expect(screen.getByRole('region', { name: 'Staffing' })).toHaveTextContent(
+      '2 of 3 places filled. 1 checked in, 1 checked out.',
+    );
     // Check-in time shown in the shift's timezone (22:05Z = 5:05 p.m. Toronto).
-    expect(screen.getAllByRole('row')[1]).toHaveTextContent(/5:05\sp\.m\./);
+    expect(detail(workerCard('A'), 'Checked in')).toHaveTextContent(/5:05\sp\.m\./);
+    expect(workerCard('A')).toHaveTextContent('Checked in at 5:05 p.m.');
+    expect(within(workerCard('B')).getByTestId('tracker')).toHaveTextContent('Step 4 of 4: Checked out');
+    expect(within(workerCard('C')).getByTestId('tracker')).toHaveTextContent('Step 2 of 4: Declined');
   });
 
   it("formats times in the shift's IANA timezone, not the browser's", async () => {
@@ -75,7 +108,8 @@ describe('manager page', () => {
     renderApp('/manager');
 
     expect(await screen.findByTestId('shift-date')).toHaveTextContent('Sunday, December 13, 2026');
-    expect(screen.getByTestId('shift-time')).toHaveTextContent(/7:00\sa\.m\.\s–\s1:00\sp\.m\.\sGMT\+9/);
+    expect(screen.getByTestId('shift-time')).toHaveTextContent(/7:00\sa\.m\..*to\s1:00\sp\.m\./);
+    expect(screen.getByTestId('shift-timezone')).toHaveTextContent('GMT+9 (Asia/Tokyo)');
   });
 
   it('shows a clear error with a retry button when the API is unreachable, and recovers', async () => {
@@ -104,11 +138,11 @@ describe('manager page', () => {
     const saved = makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited' })]);
     const fetch = stubFetch(jsonResponse(200, saved));
     const first = renderApp('/manager');
-    expect(await screen.findByRole('cell', { name: 'Invited' })).toBeInTheDocument();
+    expect(within(await findWorkerCard('Amara Okafor')).getByTestId('tracker')).toHaveTextContent('Invited');
     first.unmount();
 
     renderApp('/manager'); // a refresh: new query cache, same backend state
-    expect(await screen.findByRole('cell', { name: 'Invited' })).toBeInTheDocument();
+    expect(within(await findWorkerCard('Amara Okafor')).getByTestId('tracker')).toHaveTextContent('Invited');
     expect(snapshotReads(fetch)).toBe(2);
   });
 });

@@ -1,6 +1,7 @@
 // Live sync for one shift. Framework-free on purpose: no React, no TanStack, no
 // browser globals beyond what is injected, so every rule here is unit-tested with fakes.
 import {
+  ResetMessageSchema,
   ShiftEventSchema,
   type EventsPage,
   type ShiftEventMessage,
@@ -43,6 +44,11 @@ export type SyncOptions = {
   onSnapshot(snapshot: Snapshot): void;
   /** Called, before `onSnapshot`, for every change applied from a full event (live push or catch-up). */
   onEvent?(event: ShiftEventMessage): void;
+  /**
+   * Called, before `onSnapshot`, when the shift was reset (a newer epoch): the page should drop
+   * what it built on the old state (pending optimistic rows, the timeline).
+   */
+  onReset?(snapshot: Snapshot): void;
   online?: boolean;
   now?: () => number;
   random?: () => number;
@@ -66,6 +72,18 @@ export type ShiftSync = {
 
 export const channelFor = (shiftId: string) => `/shifts/${shiftId}`;
 
+/**
+ * A push can be lost (the channel delivers at most once). A lost event in the middle of a burst
+ * shows up as a gap when the next one arrives; a lost *last* event has nothing after it. So a
+ * quiet moment after live events is followed by one catch-up read, which finds it.
+ */
+export const VERIFY_AFTER_MS = 1_500;
+/**
+ * A page can also miss a push with nothing else arriving at all. While Live, it reads what it
+ * missed this often regardless (one small, usually empty read), so nothing stays stale for long.
+ */
+export const VERIFY_EVERY_MS = 6_000;
+
 const BACKOFF_BASE_MS = 250;
 const BACKOFF_CAP_MS = 5_000;
 
@@ -81,7 +99,7 @@ function withRow(snapshot: Snapshot, seq: number, row: Worker): Snapshot {
     ? snapshot.workers.map((w) => (w.id === row.id ? row : w))
     : [...snapshot.workers, row];
   const acceptedCount = workers.filter((w) => w.participation === 'accepted').length;
-  return { shift: { ...snapshot.shift, acceptedCount }, workers, seq };
+  return { shift: { ...snapshot.shift, acceptedCount }, workers, seq, epoch: snapshot.epoch };
 }
 
 export function createShiftSync(opts: SyncOptions): ShiftSync {
@@ -137,11 +155,78 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
     maxSeen = Math.max(maxSeen, seq);
   }
 
+  /**
+   * Where an event stands against the shift we hold: from an older epoch (drop it), a newer
+   * one (we missed a reset), or ours. Events without an epoch predate epochs: treated as ours.
+   */
+  function epochOf(e: { epoch?: number }): 'older' | 'newer' | 'same' {
+    if (!snapshot || e.epoch === undefined || e.epoch === snapshot.epoch) return 'same';
+    return e.epoch < snapshot.epoch ? 'older' : 'newer';
+  }
+
+  // A reset: adopt the server's snapshot even though its seq is lower. Single-flight; only
+  // ever moves forward to a newer epoch, never back.
+  let resetting = false;
+  let resetTarget = 0;
+  let resetRetry: unknown = null;
+  let resetAttempt = 0;
+
+  function adoptReset(fresh: Snapshot) {
+    snapshot = fresh;
+    maxSeen = fresh.seq;
+    opts.onReset?.(fresh);
+    opts.onSnapshot(fresh);
+  }
+
+  async function resetTo(epoch: number): Promise<void> {
+    if (!started || (snapshot && epoch <= snapshot.epoch)) return;
+    resetTarget = Math.max(resetTarget, epoch);
+    if (resetting) return;
+    resetting = true;
+    if (resetRetry !== null) clearTimer(resetRetry);
+    resetRetry = null;
+    try {
+      const fresh = await opts.api.fetchSnapshot(opts.shiftId);
+      if (!started) return;
+      // Not there yet (a read racing the reset): try again shortly.
+      if (fresh.epoch < resetTarget) throw new Error('snapshot older than the announced reset');
+      if (!snapshot || fresh.epoch > snapshot.epoch) adoptReset(fresh);
+      resetAttempt = 0;
+      // Anything committed after the snapshot was read arrives live or through this catch-up.
+      void catchUp();
+    } catch {
+      if (started) {
+        resetRetry = setTimer(() => void resetTo(resetTarget), backoffDelay(resetAttempt++, random));
+      }
+    } finally {
+      resetting = false;
+    }
+  }
+
   function receive(seq: number, row: Worker, live?: ShiftEventMessage) {
+    if (live) {
+      const where = epochOf(live);
+      if (where === 'older') return; // a change from before a reset, delivered late
+      if (where === 'newer') return void resetTo(live.epoch!);
+    }
     noteSeq(seq);
     const result = apply(seq, row, live);
     if (result === 'applied' && live) setState({ latencyMs: Math.max(0, now() - Date.parse(live.at)) });
     if (result === 'gap') void catchUp();
+    if (live) scheduleVerify();
+  }
+
+  // A catch-up read once a burst of live events goes quiet, and every VERIFY_EVERY_MS while
+  // Live otherwise. One timer: a live event moves it closer, each read schedules the next.
+  let verifyTimer: unknown = null;
+  function scheduleVerify(ms = VERIFY_AFTER_MS) {
+    if (verifyTimer !== null) clearTimer(verifyTimer);
+    verifyTimer = setTimer(() => {
+      verifyTimer = null;
+      if (!subscribed) return;
+      void catchUp();
+      scheduleVerify(VERIFY_EVERY_MS);
+    }, ms);
   }
 
   async function catchUp(): Promise<void> {
@@ -155,13 +240,22 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
       while (again && started) {
         again = false;
         const page = await opts.api.fetchEvents(opts.shiftId, snapshot!.seq);
+        // The shift was reset since our snapshot (we missed the live message, e.g. in an outage).
+        if (page.epoch > snapshot!.epoch) {
+          void resetTo(page.epoch);
+          break;
+        }
+        if (page.epoch < snapshot!.epoch) break; // a read from before a reset we already know about
         for (const e of page.events) {
+          if (epochOf(e) !== 'same') continue;
           noteSeq(e.seq);
           apply(e.seq, e.row, e);
         }
         if (page.hasMore) {
           const fresh = await opts.api.fetchSnapshot(opts.shiftId);
-          if (fresh.seq > snapshot!.seq) publish(fresh);
+          if (fresh.epoch > snapshot!.epoch) {
+            adoptReset(fresh);
+          } else if (fresh.epoch === snapshot!.epoch && fresh.seq > snapshot!.seq) publish(fresh);
           again = true;
         } else if (page.events.length > 0 && snapshot!.seq < maxSeen) {
           again = true; // events arrived during the read that it did not include yet
@@ -177,6 +271,8 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
   }
 
   function handleMessage(data: unknown) {
+    const reset = ResetMessageSchema.safeParse(data);
+    if (reset.success) return void resetTo(reset.data.epoch);
     const parsed = ShiftEventSchema.safeParse(data);
     if (!parsed.success) return; // not ours or malformed: never let it touch the screen
     receive(parsed.data.seq, parsed.data.row, parsed.data);
@@ -197,6 +293,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
         setState({ status: 'live' });
         // Subscribed first, then read what we might have missed.
         void catchUp();
+        scheduleVerify(VERIFY_EVERY_MS);
       },
       onMessage(data) {
         if (isCurrent() && subscribed) handleMessage(data);
@@ -221,6 +318,8 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
     c?.close();
     if (reconnectTimer !== null) clearTimer(reconnectTimer);
     reconnectTimer = null;
+    if (verifyTimer !== null) clearTimer(verifyTimer);
+    verifyTimer = null;
   }
 
   function scheduleReconnect() {
@@ -250,6 +349,10 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
       disconnect();
       if (catchUpRetry !== null) clearTimer(catchUpRetry);
       catchUpRetry = null;
+      if (resetRetry !== null) clearTimer(resetRetry);
+      resetRetry = null;
+      if (verifyTimer !== null) clearTimer(verifyTimer);
+      verifyTimer = null;
     },
     getState: () => state,
     subscribe(listener) {
@@ -257,7 +360,16 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
       return () => listeners.delete(listener);
     },
     adoptSnapshot(next) {
-      if (snapshot && next.seq < snapshot.seq) return opts.onSnapshot(snapshot); // stale read: put ours back
+      if (snapshot && next.epoch > snapshot.epoch) {
+        // A refetch saw the reset before we heard about it: same as a reset message.
+        adoptReset(next);
+        if (subscribed) void catchUp();
+        return;
+      }
+      // From before a reset we already applied: put ours back.
+      if (snapshot && next.epoch < snapshot.epoch) return opts.onSnapshot(snapshot);
+      // Within one epoch a lower seq is a stale read: put ours back.
+      if (snapshot && next.seq < snapshot.seq) return opts.onSnapshot(snapshot);
       if (snapshot && next.seq === snapshot.seq) return;
       const first = snapshot === null;
       snapshot = next;

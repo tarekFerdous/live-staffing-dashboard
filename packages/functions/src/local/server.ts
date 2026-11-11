@@ -6,7 +6,9 @@ import {
   LOCAL_ENDPOINT,
   LOCAL_IDEMPOTENCY_TABLE,
   LOCAL_TABLE,
+  SEED,
 } from '@staffing/store';
+import { makeDemoResetHandler } from '../demoReset';
 import { makeGetConfigHandler } from '../getConfig';
 import { makeGetEventsHandler } from '../getEvents';
 import { makeGetShiftHandler } from '../getShift';
@@ -42,6 +44,7 @@ const server = createLocalServer([
       idempotency: { client, tableName: process.env.IDEMPOTENCY_TABLE ?? LOCAL_IDEMPOTENCY_TABLE },
     }),
   },
+  { method: 'POST', path: '/api/demo/reset', handler: makeDemoResetHandler({ store, seeds: [SEED] }) },
 ]);
 
 const events = createLocalEvents(server);

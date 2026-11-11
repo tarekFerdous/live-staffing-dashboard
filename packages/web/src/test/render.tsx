@@ -1,6 +1,6 @@
 import type { Snapshot, Worker } from '@staffing/domain';
 import { QueryClient } from '@tanstack/react-query';
-import { render } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import { App, ROUTER_FUTURE } from '../App';
@@ -47,10 +47,20 @@ export function makeSnapshot(workers?: Worker[], shift: Partial<Snapshot['shift'
       worker('sofia', 'Sofia Rossi'),
     ],
     seq: 0,
+    epoch: 1,
   };
 }
 
 export { worker };
+
+/** A worker's card on the manager page: a region named by the worker's name. */
+export const workerCard = (name: string) => screen.getByRole('region', { name });
+export const findWorkerCard = (name: string) => screen.findByRole('region', { name });
+/** The card's tracker text, e.g. "Step 2 of 4: Accepted" or "Not invited". */
+export const trackerOf = (name: string) => within(workerCard(name)).getByTestId('tracker');
+/** The value shown next to a label in a card's details (`<dt>label</dt><dd>value</dd>`). */
+export const detail = (scope: HTMLElement, label: string) =>
+  within(scope).getByText(label, { selector: 'dt' }).nextElementSibling as HTMLElement;
 
 export const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

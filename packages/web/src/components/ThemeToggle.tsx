@@ -13,7 +13,7 @@ export function ThemeToggle() {
   useEffect(() => applyThemePreference(pref), [pref]);
 
   return (
-    <label className="flex items-center gap-1.5 text-xs text-muted">
+    <label className="flex items-center gap-1.5 rounded-full bg-secondary py-1 pr-1 pl-3 text-xs font-semibold">
       <span>Theme</span>
       <select
         value={pref}
@@ -22,7 +22,7 @@ export function ThemeToggle() {
           setPref(next);
           saveThemePreference(next);
         }}
-        className="rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-fg"
+        className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-fg"
       >
         <option value="system">System</option>
         <option value="light">Light</option>

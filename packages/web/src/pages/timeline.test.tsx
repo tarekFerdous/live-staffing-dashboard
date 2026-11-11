@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeApi } from '../test/fakeApi';
 import { fakeTransport } from '../test/fakeTransport';
-import { makeSnapshot, renderApp } from '../test/render';
+import { makeSnapshot, renderApp, findWorkerCard } from '../test/render';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -17,7 +17,7 @@ async function liveManager(setupHistory?: (api: ReturnType<typeof fakeApi>) => v
   setupHistory?.(api);
   const t = fakeTransport();
   renderApp('/manager', { transport: t.transport });
-  await screen.findByRole('table');
+  await findWorkerCard('Amara Okafor');
   await act(async () => t.last.subscribed());
   return { api, t };
 }

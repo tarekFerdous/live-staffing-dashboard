@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App, createQueryClient, ROUTER_FUTURE } from './App';
 import { appSyncTransport, loadRealtimeConfig } from './lib/sync/appsyncTransport';
+// Inter, self-hosted from the bundle (no request to Google Fonts).
+import '@fontsource-variable/inter';
 import './index.css';
 
 // GET /api/config says where the live channel is (AppSync Events in the cloud, the local ws

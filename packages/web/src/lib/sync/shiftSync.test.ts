@@ -8,7 +8,13 @@ import {
 } from '@staffing/domain';
 import { describe, expect, it } from 'vitest';
 import { fakeTransport } from '../../test/fakeTransport';
-import { backoffDelay, createShiftSync, type SyncOptions } from './shiftSync';
+import {
+  backoffDelay,
+  createShiftSync,
+  VERIFY_AFTER_MS,
+  VERIFY_EVERY_MS,
+  type SyncOptions,
+} from './shiftSync';
 
 const SHIFT = 'harbourfront-gala';
 const T0 = Date.parse('2026-12-12T20:00:00.000Z');
@@ -39,6 +45,7 @@ function initialSnapshot(): Snapshot {
     },
     workers: [worker('amara'), worker('liam'), worker('sofia')],
     seq: 0,
+    epoch: 1,
   };
 }
 
@@ -71,10 +78,17 @@ function fakeServer() {
         shift: { ...snap.shift, acceptedCount: snap.shift.acceptedCount + r.acceptedDelta },
         workers: snap.workers.map((w) => (w.id === workerId ? r.worker : w)),
         seq,
+        epoch: snap.epoch,
       };
-      const e = { seq, type: action, workerId, row: r.worker, at };
+      const e = { seq, type: action, workerId, row: r.worker, at, epoch: snap.epoch };
       events.push(e);
       return e;
+    },
+    /** A reset: the starting state, an empty log, the next epoch. Returns the live reset message. */
+    reset() {
+      snap = { ...initialSnapshot(), epoch: snap.epoch + 1 };
+      events.length = 0;
+      return { kind: 'reset' as const, epoch: snap.epoch };
     },
     api: {
       async fetchEvents(_shiftId: string, after: number) {
@@ -84,7 +98,11 @@ function fakeServer() {
           throw new Error('network');
         }
         const rest = events.filter((e) => e.seq > after);
-        return { events: rest.slice(0, MAX_EVENTS_PAGE), hasMore: rest.length > MAX_EVENTS_PAGE };
+        return {
+          events: rest.slice(0, MAX_EVENTS_PAGE),
+          hasMore: rest.length > MAX_EVENTS_PAGE,
+          epoch: snap.epoch,
+        };
       },
       async fetchSnapshot() {
         calls.push('snapshot');
@@ -126,6 +144,8 @@ function setup(extra: Partial<SyncOptions> = {}) {
     ...extra,
   });
   const pendingTimers = () => timers.filter((x) => !x.cleared);
+  /** Timers other than the periodic verify read (backoffs, retries). */
+  const isVerify = (x: { ms: number }) => x.ms === VERIFY_AFTER_MS || x.ms === VERIFY_EVERY_MS;
   return {
     sync,
     server,
@@ -142,6 +162,8 @@ function setup(extra: Partial<SyncOptions> = {}) {
       await flush();
     },
     pendingTimers,
+    otherTimers: () => timers.filter((x) => !isVerify(x)),
+    pendingOther: () => pendingTimers().filter((x) => !isVerify(x)),
   };
 }
 
@@ -262,7 +284,7 @@ describe('shift sync', () => {
 
     s.t.last.drop('keep-alive timeout');
     expect(s.sync.getState().status).toBe('reconnecting');
-    expect(s.pendingTimers().map((x) => x.ms)).toEqual([250]);
+    expect(s.pendingOther().map((x) => x.ms)).toEqual([250]);
 
     // Changes made while the page was disconnected.
     s.server.act('amara', 'invite');
@@ -286,12 +308,12 @@ describe('shift sync', () => {
       await s.runTimers();
       s.t.last.drop('refused');
     }
-    expect(s.timers.map((x) => x.ms)).toEqual([250, 500, 1000, 2000, 4000, 5000, 5000]);
+    expect(s.otherTimers().map((x) => x.ms)).toEqual([250, 500, 1000, 2000, 4000, 5000, 5000]);
 
     await s.runTimers();
     s.t.last.subscribed();
     s.t.last.drop();
-    expect(s.pendingTimers().map((x) => x.ms)).toEqual([250]);
+    expect(s.pendingOther().map((x) => x.ms)).toEqual([250]);
   });
 
   it('adds jitter to the backoff and never waits more than 5 s', () => {
@@ -421,6 +443,127 @@ describe('shift sync', () => {
     await flush();
     expect(s.server.calls).toEqual(['events:0']);
     expect(s.latest()!.seq).toBe(1);
+  });
+
+  it('finds a lost last event with one catch-up read once live events go quiet', async () => {
+    const s = await live();
+    s.t.last.send(s.server.act('amara', 'invite'));
+    s.t.last.send(s.server.act('amara', 'accept'));
+    s.server.act('amara', 'check_in'); // published, but never delivered
+    expect(s.latest()!.seq).toBe(2);
+    expect(s.server.calls).toEqual([]); // nothing after it, so no gap to notice
+
+    // One verify timer for the whole burst, then one read that finds seq 3.
+    const verify = s.pendingTimers().filter((x) => x.ms === VERIFY_AFTER_MS);
+    expect(verify).toHaveLength(1);
+    await s.runTimers();
+    expect(s.server.calls).toEqual(['events:2']);
+    expect(s.latest()!.seq).toBe(3);
+  });
+
+  it('reads what it missed every few seconds while Live, even when no push arrives at all', async () => {
+    const s = await live();
+    s.server.act('amara', 'invite'); // published, but this page never gets it
+    expect(s.pendingTimers().map((x) => x.ms)).toEqual([VERIFY_EVERY_MS]);
+    await s.runTimers();
+    expect(s.server.calls).toEqual(['events:0']);
+    expect(s.latest()!.seq).toBe(1);
+    expect(s.pendingTimers().map((x) => x.ms)).toEqual([VERIFY_EVERY_MS]); // and keeps going
+
+    // Not while disconnected.
+    s.sync.setBlocked(true);
+    expect(s.pendingTimers()).toEqual([]);
+  });
+
+  describe('resets (epoch)', () => {
+    it('a live reset message with a newer epoch adopts the lower-seq server snapshot', async () => {
+      const resets: Snapshot[] = [];
+      const s = await live({ onReset: (snap) => resets.push(snap) });
+      s.t.last.send(s.server.act('amara', 'invite'));
+      s.t.last.send(s.server.act('amara', 'accept'));
+      expect(s.latest()!.seq).toBe(2);
+
+      s.t.last.send(s.server.reset());
+      await flush();
+      expect(s.latest()).toMatchObject({ seq: 0, epoch: 2 });
+      expect(s.latest()!.workers.every((w) => w.participation === 'uninvited')).toBe(true);
+      expect(resets.map((r) => r.epoch)).toEqual([2]);
+
+      // New events start again from seq 1 and apply as usual.
+      s.t.last.send(s.server.act('liam', 'invite'));
+      expect(s.latest()).toMatchObject({ seq: 1, epoch: 2 });
+    });
+
+    it('ignores a reset message for an older or equal epoch', async () => {
+      const resets: Snapshot[] = [];
+      const s = await live({ onReset: (snap) => resets.push(snap) });
+      s.t.last.send(s.server.act('amara', 'invite'));
+      s.t.last.send({ kind: 'reset', epoch: 1 });
+      await flush();
+      expect(s.server.calls).not.toContain('snapshot');
+      expect(s.latest()!.seq).toBe(1);
+      expect(resets).toEqual([]);
+    });
+
+    it('never rolls back to a snapshot from an older epoch', async () => {
+      const s = await live();
+      const old = structuredClone(s.server.snapshot); // epoch 1
+      s.t.last.send(s.server.reset());
+      await flush();
+      s.sync.adoptSnapshot(old);
+      expect(s.latest()).toMatchObject({ epoch: 2 }); // ours is put back
+    });
+
+    it('drops a change from before the reset that is delivered late', async () => {
+      const s = await live();
+      const late = s.server.act('amara', 'invite'); // seq 1, epoch 1, not delivered yet
+      s.t.last.send(s.server.reset());
+      await flush();
+      s.t.last.send(late); // seq 1 would otherwise look like the next change
+      expect(s.latest()).toMatchObject({ seq: 0, epoch: 2 });
+      expect(s.latest()!.workers.find((w) => w.id === 'amara')!.participation).toBe('uninvited');
+    });
+
+    it('a page in outage during a reset resets itself from the catch-up when it reconnects', async () => {
+      const resets: Snapshot[] = [];
+      const s = await live({ onReset: (snap) => resets.push(snap) });
+      s.t.last.send(s.server.act('amara', 'invite'));
+      s.sync.setBlocked(true);
+      s.server.act('amara', 'accept');
+      s.server.reset(); // the live reset message is missed
+      s.server.act('liam', 'invite');
+
+      s.sync.setBlocked(false);
+      s.t.last.subscribed();
+      await flush();
+      await flush();
+      expect(resets.map((r) => r.epoch)).toEqual([2]);
+      expect(s.latest()).toMatchObject({ seq: 1, epoch: 2 });
+      expect(s.latest()!.workers.find((w) => w.id === 'liam')!.participation).toBe('invited');
+      expect(s.latest()!.workers.find((w) => w.id === 'amara')!.participation).toBe('uninvited');
+    });
+
+    it('a refetched snapshot with a newer epoch counts as a reset', async () => {
+      const resets: Snapshot[] = [];
+      const s = await live({ onReset: (snap) => resets.push(snap) });
+      s.t.last.send(s.server.act('amara', 'invite'));
+      s.server.reset();
+      s.sync.adoptSnapshot(structuredClone(s.server.snapshot));
+      expect(resets.map((r) => r.epoch)).toEqual([2]);
+      expect(s.latest()).toMatchObject({ seq: 0, epoch: 2 });
+    });
+
+    it('retries when the snapshot it reads is still from before the announced reset', async () => {
+      const s = await live();
+      s.t.last.send({ kind: 'reset', epoch: 2 }); // announced, but the server read is still epoch 1
+      await flush();
+      expect(s.published).toEqual([]); // nothing adopted from the stale read
+      expect(s.pendingOther()).toHaveLength(1); // a retry is scheduled
+      s.server.reset();
+      await s.runTimers();
+      await flush();
+      expect(s.latest()).toMatchObject({ seq: 0, epoch: 2 });
+    });
   });
 
   it('stops cleanly: no reconnects and no callbacks after stop', async () => {

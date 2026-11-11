@@ -1,6 +1,6 @@
 import { BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { EventsPageSchema, MAX_EVENTS_PAGE } from '@staffing/domain';
-import { createShiftStore, evtSk, SEED, shiftPk, type ShiftStore } from '@staffing/store';
+import { createShiftStore, evtSk, META_SK, SEED, shiftPk, type ShiftStore } from '@staffing/store';
 import { startTestDynamo, type TestDynamo, type TestTables } from '@staffing/store/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { makeGetEventsHandler } from './getEvents';
@@ -88,7 +88,16 @@ describe('GET /api/shifts/{shiftId}/events', () => {
       checkedOutAt: null,
       version: 1,
     };
-    const items = Array.from({ length: MAX_EVENTS_PAGE + 5 }, (_, i) => ({
+    const meta = {
+      PK: shiftPk(shiftId),
+      SK: META_SK,
+      ...SEED.shift,
+      id: shiftId,
+      seq: 205,
+      acceptedCount: 0,
+      epoch: 7,
+    };
+    const events = Array.from({ length: MAX_EVENTS_PAGE + 5 }, (_, i) => ({
       PK: shiftPk(shiftId),
       SK: evtSk(i + 1),
       seq: i + 1,
@@ -98,6 +107,7 @@ describe('GET /api/shifts/{shiftId}/events', () => {
       row,
       at,
     }));
+    const items = [meta, ...events];
     for (let i = 0; i < items.length; i += 25) {
       await tables.doc.send(
         new BatchWriteCommand({
@@ -117,6 +127,14 @@ describe('GET /api/shifts/{shiftId}/events', () => {
     const rest = await page(shiftId, String(MAX_EVENTS_PAGE));
     expect(rest.events.map((e) => e.seq)).toEqual([201, 202, 203, 204, 205]);
     expect(rest.hasMore).toBe(false);
+    expect(rest.epoch).toBe(7);
+  });
+
+  it('carries the current epoch and answers 404 for an unknown shift', async () => {
+    expect((await page(SEED.shift.id)).epoch).toBe(await store.getEpoch(SEED.shift.id));
+    const res = await makeGetEventsHandler(store)(get('no-such-shift'));
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res.body).code).toBe('SHIFT_NOT_FOUND');
   });
 
   it('returns 500 with a readable message when the store fails', async () => {

@@ -2,7 +2,7 @@ import type { ShiftEventMessage } from '@staffing/domain';
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { worker } from '../test/render';
-import { mergeEvents, TIMELINE_LIMIT } from '../lib/useTimeline';
+import { firstMissing, mergeEvents, TIMELINE_LIMIT } from '../lib/useTimeline';
 import { ActivityTimeline } from './ActivityTimeline';
 
 const ev = (seq: number, type: ShiftEventMessage['type'], name: string, at: string): ShiftEventMessage => ({
@@ -72,5 +72,24 @@ describe('mergeEvents', () => {
     expect(merged).toHaveLength(TIMELINE_LIMIT);
     expect(merged[0]!.seq).toBe(6);
     expect(merged.at(-1)!.seq).toBe(TIMELINE_LIMIT + 5);
+  });
+});
+
+describe('firstMissing', () => {
+  const at = '2026-12-12T20:00:00Z';
+  const seqs = (...n: number[]) => n.map((s) => ev(s, 'invite', 'Ana', at));
+
+  it('finds a hole before the newest entry, not only past it', () => {
+    expect(firstMissing(seqs(3, 4), 4)).toBe(1); // a live event landed before the first read returned
+    expect(firstMissing(seqs(1, 2, 4), 4)).toBe(3);
+    expect(firstMissing(seqs(1, 2), 3)).toBe(3);
+    expect(firstMissing(seqs(1, 2, 3), 3)).toBeNull();
+    expect(firstMissing([], 0)).toBeNull();
+  });
+
+  it('only looks at the window the timeline keeps', () => {
+    const latest = TIMELINE_LIMIT + 10;
+    const window = Array.from({ length: TIMELINE_LIMIT }, (_, i) => latest - i);
+    expect(firstMissing(seqs(...window), latest)).toBeNull();
   });
 });

@@ -1,6 +1,9 @@
-import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
+import type { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
   QueryCommand,
   TransactGetCommand,
   TransactWriteCommand,
@@ -18,7 +21,7 @@ import {
   type Worker,
 } from '@staffing/domain';
 import { EVT_PREFIX, evtSk, META_SK, shiftPk, SNAPSHOT_SK_FROM, workerSk } from './keys';
-import { seedItems, type SeedData } from './seed';
+import { seedMeta, seedWorkers, type SeedData } from './seed';
 
 type Item = Record<string, unknown>;
 type WriteRequest = { PutRequest?: { Item: Item }; DeleteRequest?: { Key: Item } };
@@ -32,6 +35,8 @@ export type ShiftEvent = {
   /** The complete worker row after the change. */
   row: Worker;
   at: string;
+  /** The shift's epoch when the change was made (absent on events from before epochs). */
+  epoch?: number;
 };
 
 export type ActionOutcome =
@@ -46,8 +51,16 @@ export type ApplyOptions = { expectedVersion?: number; now?: () => string };
 export type ShiftStore = {
   /** META plus every worker row, read with a single Query. Null when the shift does not exist. */
   getSnapshot(shiftId: string): Promise<Snapshot | null>;
-  /** Deletes the whole shift partition (event log included) and writes the seed items. */
-  resetShift(seed: SeedData): Promise<void>;
+  /**
+   * Puts the shift back to the seed and bumps its epoch (0 → 1 when there was no shift).
+   * Returns the new epoch. Not one transaction (the log can outgrow the item limit), so the
+   * order is what keeps it safe: META goes first, so an action during the reset fails with
+   * SHIFT_NOT_FOUND instead of half-applying; META comes back last, and that write is the
+   * moment the reset takes effect (and what the stream turns into a live reset message).
+   */
+  resetShift(seed: SeedData): Promise<number>;
+  /** The shift's current epoch, or null when the shift does not exist. */
+  getEpoch(shiftId: string): Promise<number | null>;
   /**
    * Applies one action atomically: the worker row, META `seq` (and `acceptedCount`)
    * and a new `EVT#<seq>` item are written in one conditional transaction.
@@ -56,6 +69,14 @@ export type ShiftStore = {
   /** Events with seq > afterSeq, oldest first; at most `limit` of them when given. */
   listEvents(shiftId: string, afterSeq?: number, limit?: number): Promise<ShiftEvent[]>;
 };
+
+/**
+ * Matched by name, not `instanceof`: in Lambda the error comes from the runtime's own copy of the
+ * AWS SDK (a nested `node_modules`), so class identity is not something to rely on.
+ */
+export function isTransactionCanceled(err: unknown): err is TransactionCanceledException {
+  return err instanceof Error && err.name === 'TransactionCanceledException';
+}
 
 /** Optimistic retries when another write to the same shift got in first. */
 const MAX_RETRIES = 3;
@@ -102,6 +123,19 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
     }
   }
 
+  async function getEpoch(shiftId: string): Promise<number | null> {
+    const res = await doc.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: { PK: shiftPk(shiftId), SK: META_SK },
+        ProjectionExpression: 'epoch',
+        ConsistentRead: true,
+      }),
+    );
+    if (!res.Item) return null;
+    return (res.Item.epoch as number | undefined) ?? 0; // shifts seeded before epochs existed
+  }
+
   /** One attempt: read META + worker, decide with the domain rules, write everything in one transaction. */
   async function attempt(
     shiftId: string,
@@ -110,14 +144,21 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
     opts: ApplyOptions,
   ): Promise<ActionOutcome | 'retry'> {
     const pk = shiftPk(shiftId);
-    const read = await doc.send(
-      new TransactGetCommand({
-        TransactItems: [
-          { Get: { TableName: tableName, Key: { PK: pk, SK: META_SK } } },
-          { Get: { TableName: tableName, Key: { PK: pk, SK: workerSk(workerId) } } },
-        ],
-      }),
-    );
+    let read;
+    try {
+      read = await doc.send(
+        new TransactGetCommand({
+          TransactItems: [
+            { Get: { TableName: tableName, Key: { PK: pk, SK: META_SK } } },
+            { Get: { TableName: tableName, Key: { PK: pk, SK: workerSk(workerId) } } },
+          ],
+        }),
+      );
+    } catch (err) {
+      // The read conflicts with another action's transaction still writing META: read again.
+      if (isTransactionCanceled(err)) return 'retry';
+      throw err;
+    }
     const meta = read.Responses?.[0]?.Item;
     const workerItem = read.Responses?.[1]?.Item;
     if (!meta)
@@ -176,7 +217,15 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
     }
     if (t.needsCapacity) metaCond += ' AND acceptedCount < #required';
 
-    const event: ShiftEvent = { seq: nextSeq, type: action, workerId, actor: t.actor, row: next, at: now };
+    const event: ShiftEvent = {
+      seq: nextSeq,
+      type: action,
+      workerId,
+      actor: t.actor,
+      row: next,
+      at: now,
+      epoch: (meta.epoch as number | undefined) ?? 0,
+    };
 
     try {
       await doc.send(
@@ -217,7 +266,7 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
       );
       return { kind: 'applied', worker: next, seq: nextSeq };
     } catch (err) {
-      if (!(err instanceof TransactionCanceledException)) throw err;
+      if (!isTransactionCanceled(err)) throw err;
       const [, metaReason] = err.CancellationReasons ?? [];
       // seq unchanged but the META condition failed: the only other clause is capacity.
       if (metaReason?.Code === 'ConditionalCheckFailed' && metaReason.Item) {
@@ -253,18 +302,29 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
         },
         workers: items.filter((i) => i.type === 'worker').map(toWorker),
         seq: meta.seq,
+        epoch: meta.epoch ?? 0,
       });
     },
 
+    getEpoch,
+
     async resetShift(seed) {
-      const existing = await queryAll({
+      const pk = shiftPk(seed.shift.id);
+      const epoch = ((await getEpoch(seed.shift.id)) ?? 0) + 1;
+      // 1. META first: from here on every action answers SHIFT_NOT_FOUND.
+      await doc.send(new DeleteCommand({ TableName: tableName, Key: { PK: pk, SK: META_SK } }));
+      // 2. Workers and the event log.
+      const rest = await queryAll({
         KeyConditionExpression: 'PK = :pk',
-        ExpressionAttributeValues: { ':pk': shiftPk(seed.shift.id) },
+        ExpressionAttributeValues: { ':pk': pk },
         ProjectionExpression: 'PK, SK',
         ConsistentRead: true,
       });
-      await batchWrite(existing.map((Key) => ({ DeleteRequest: { Key } })));
-      await batchWrite(seedItems(seed).map((Item) => ({ PutRequest: { Item } })));
+      await batchWrite(rest.map((Key) => ({ DeleteRequest: { Key } })));
+      // 3. The seed's workers, then 4. META with the new epoch: the reset takes effect here.
+      await batchWrite(seedWorkers(seed).map((Item) => ({ PutRequest: { Item } })));
+      await doc.send(new PutCommand({ TableName: tableName, Item: seedMeta(seed, epoch) }));
+      return epoch;
     },
 
     async applyAction(shiftId, workerId, action, opts = {}) {
@@ -299,6 +359,7 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
         actor: i.actor as ShiftEvent['actor'],
         row: toWorker(i.row as Item),
         at: i.at as string,
+        ...(typeof i.epoch === 'number' && { epoch: i.epoch }),
       }));
     },
   };

@@ -24,6 +24,22 @@ export function addTimelineEvents(qc: QueryClient, shiftId: string, events: read
 }
 
 /**
+ * The oldest seq the timeline should show but doesn't, or null. Looking for the first hole
+ * (not just past the newest entry) matters: a live event can land before an earlier read
+ * returns, and the entries in between must still be fetched.
+ */
+export function firstMissing(events: readonly ShiftEventMessage[], latestSeq: number): number | null {
+  const have = new Set(events.map((e) => e.seq));
+  for (let s = Math.max(1, latestSeq - TIMELINE_LIMIT + 1); s <= latestSeq; s++) if (!have.has(s)) return s;
+  return null;
+}
+
+/** After a reset: the log starts again, so a loaded timeline becomes empty. */
+export function resetTimeline(qc: QueryClient, shiftId: string) {
+  qc.setQueryData<ShiftEventMessage[]>(eventsKey(shiftId), (old) => (old ? [] : old));
+}
+
+/**
  * The shift's recent activity: the last TIMELINE_LIMIT events from the log, then every
  * live or caught-up event the sync reports (see LiveProvider). When the snapshot moves past
  * the newest entry without an event (the page's own action, a refetch, a snapshot fallback
@@ -36,13 +52,12 @@ export function useTimeline(snapshot: Snapshot, shiftId: string = SHIFT_ID) {
     queryFn: async () => (await fetchEvents(shiftId, Math.max(0, snapshot.seq - TIMELINE_LIMIT))).events,
     staleTime: Infinity,
   });
-  const loaded = query.data !== undefined;
-  const newest = query.data?.at(-1)?.seq ?? 0;
+  const gap = query.data ? firstMissing(query.data, snapshot.seq) : null;
 
   useEffect(() => {
-    if (!loaded || snapshot.seq <= newest) return;
+    if (gap === null) return;
     let cancelled = false;
-    fetchEvents(shiftId, newest)
+    fetchEvents(shiftId, gap - 1)
       .then((page) => {
         if (!cancelled) addTimelineEvents(qc, shiftId, page.events);
       })
@@ -51,7 +66,7 @@ export function useTimeline(snapshot: Snapshot, shiftId: string = SHIFT_ID) {
     return () => {
       cancelled = true;
     };
-  }, [loaded, newest, snapshot.seq, shiftId, qc]);
+  }, [gap, shiftId, qc]);
 
   return query;
 }

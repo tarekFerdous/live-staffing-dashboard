@@ -21,7 +21,7 @@ import {
   type Transport,
 } from './sync/shiftSync';
 import { snapshotKey } from './useSnapshot';
-import { addTimelineEvents } from './useTimeline';
+import { addTimelineEvents, resetTimeline } from './useTimeline';
 
 /** `off` means this build has no live channel configured (actions refetch instead). */
 export type LiveStatus = SyncStatus | 'off';
@@ -69,7 +69,7 @@ export function useShiftSync(
   online: boolean,
   blocked: boolean,
   /** Must be stable across renders (it is read whenever the sync writes a snapshot). */
-  pending: ReadonlyMap<string, PendingRow>,
+  pending: Map<string, PendingRow>,
 ) {
   const queryClient = useQueryClient();
   const [sync, setSync] = useState<ShiftSync | null>(null);
@@ -83,6 +83,12 @@ export function useShiftSync(
       api: { fetchEvents, fetchSnapshot: (id) => fetchSnapshot(id) },
       onSnapshot: (snap) => queryClient.setQueryData(key, overlayPending(snap, pending)),
       onEvent: (event) => addTimelineEvents(queryClient, shiftId, [event]),
+      // The shift was reset: drop optimistic rows built on the old state, and start the
+      // timeline again from the (now empty) log; useTimeline reads anything newer.
+      onReset: () => {
+        pending.clear();
+        resetTimeline(queryClient, shiftId);
+      },
       online: navigator.onLine,
     });
     const offer = (data: unknown) => {

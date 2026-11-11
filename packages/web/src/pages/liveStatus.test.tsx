@@ -1,9 +1,9 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeApi } from '../test/fakeApi';
 import { fakeTransport } from '../test/fakeTransport';
-import { makeSnapshot, renderApp } from '../test/render';
+import { makeSnapshot, renderApp, findWorkerCard, trackerOf } from '../test/render';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -12,14 +12,13 @@ afterEach(() => {
 });
 
 const pill = () => screen.getByTestId('connection-pill');
-const row = (name: string) => screen.getByRole('rowheader', { name }).closest('tr')!;
 const inviteButton = (name: string) => screen.getByRole('button', { name: `Invite ${name}` });
 
 async function liveManager() {
   const api = fakeApi(makeSnapshot());
   const t = fakeTransport();
   renderApp('/manager', { transport: t.transport });
-  await screen.findByRole('table');
+  await findWorkerCard('Amara Okafor');
   expect(pill()).toHaveTextContent('Connecting…');
   await act(async () => t.last.subscribed());
   expect(pill()).toHaveTextContent('Live');
@@ -55,7 +54,7 @@ describe('connection pill, outage switch and latency badge', () => {
     await act(async () => t.last.subscribed());
 
     expect(pill()).toHaveTextContent('Live');
-    expect(await within(row('Liam Chen')).findByText('Accepted')).toBeInTheDocument();
+    await vi.waitFor(() => expect(trackerOf('Liam Chen')).toHaveTextContent('Accepted'));
     expect(screen.getByTestId('count-filled')).toHaveTextContent('1');
     expect(inviteButton('Amara Okafor')).toBeEnabled();
     expect(screen.queryByText(/Actions are turned off/)).not.toBeInTheDocument();
@@ -110,7 +109,7 @@ describe('connection pill, outage switch and latency badge', () => {
   it('without a live channel shows "Live updates off", hides the switch and keeps actions on', async () => {
     fakeApi(makeSnapshot());
     renderApp('/manager');
-    await screen.findByRole('table');
+    await findWorkerCard('Amara Okafor');
     expect(pill()).toHaveTextContent('Live updates off');
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     expect(inviteButton('Amara Okafor')).toBeEnabled();

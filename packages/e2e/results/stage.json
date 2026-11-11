@@ -1,0 +1,68 @@
+{
+  "target": "stage",
+  "baseUrl": "https://auvf58yune.execute-api.ca-central-1.amazonaws.com",
+  "measuredAt": "2026-11-11T11:50:34.323Z",
+  "durationS": 169,
+  "machine": {
+    "os": "Windows_NT 10.0.26200 (x64)",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor × 8",
+    "memoryGb": 31,
+    "node": "v22.18.0",
+    "browser": "Chromium 158.0.8127.18 (headless)"
+  },
+  "conditions": "Sequential runs, 1000 ms apart, browser on this machine → ca-central-1",
+  "updateDelayMs": {
+    "n": 100,
+    "p50": 253.2,
+    "p95": 702.2,
+    "max": 741.4,
+    "min": 131.4,
+    "mean": 329.3,
+    "samples": [
+      354, 719, 267, 679, 147, 265, 314, 652, 196, 181, 239, 269, 173, 300, 711, 674, 209, 219, 346, 678, 194,
+      290, 706, 221, 145, 230, 241, 201, 283, 267, 621, 245, 269, 225, 244, 160, 288, 164, 214, 260, 248, 231,
+      302, 632, 216, 212, 297, 169, 260, 261, 266, 682, 691, 164, 232, 275, 174, 276, 169, 270, 741, 627, 373,
+      648, 201, 212, 233, 209, 227, 322, 686, 155, 295, 656, 693, 253, 702, 289, 215, 263, 131, 226, 331, 703,
+      151, 243, 275, 681, 219, 228, 238, 651, 241, 253, 242, 143, 310, 160, 241, 179
+    ]
+  },
+  "recoveryMs": {
+    "n": 20,
+    "p50": 251.7,
+    "p95": 304.9,
+    "max": 509.8,
+    "min": 185.8,
+    "mean": 253.2,
+    "samples": [
+      510, 210, 284, 197, 208, 195, 305, 269, 273, 292, 252, 280, 278, 186, 257, 188, 201, 289, 189, 204
+    ]
+  },
+  "coldStart": {
+    "ms": 2144,
+    "note": "First Accept after PostAction and Publisher were forced cold; not part of the percentiles."
+  },
+  "perHopMs": {
+    "CommandDuration": {
+      "count": 117,
+      "p50": 49.34231565550815,
+      "p95": 150.04461800199047,
+      "max": 629.3414839999999
+    },
+    "CommitToPublisher": {
+      "count": 117,
+      "p50": 113.07662715295294,
+      "p95": 527.1777905238748,
+      "max": 1008
+    },
+    "PublishDuration": {
+      "count": 117,
+      "p50": 87.15295498951843,
+      "p95": 156.99359975402677,
+      "max": 756.022522
+    }
+  },
+  "throttling": {
+    "readThrottleEvents": 0,
+    "writeThrottleEvents": 0
+  }
+}

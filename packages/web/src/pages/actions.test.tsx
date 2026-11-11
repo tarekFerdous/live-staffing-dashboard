@@ -3,13 +3,20 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeApi } from '../test/fakeApi';
-import { makeSnapshot, renderApp, worker } from '../test/render';
+import {
+  makeSnapshot,
+  renderApp,
+  worker,
+  detail,
+  findWorkerCard,
+  trackerOf,
+  workerCard,
+} from '../test/render';
 import { WORKER_STORAGE_KEY } from './WorkerPage';
 
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
-const row = (name: string) => screen.getByRole('rowheader', { name }).closest('tr')!;
 const counts = () => ({
   filled: Number(screen.getByTestId('count-filled').textContent),
   remaining: Number(screen.getByTestId('count-remaining').textContent),
@@ -27,10 +34,10 @@ describe('manager: invite', () => {
       ]),
     );
     renderApp('/manager');
-    await screen.findByRole('table');
-    expect(within(row('Ana')).getByRole('button', { name: 'Invite Ana' })).toBeEnabled();
-    expect(within(row('Ben')).getByRole('button', { name: 'Invite Ben' })).toBeEnabled();
-    for (const n of ['Cy', 'Di', 'Ed']) expect(within(row(n)).queryByRole('button')).toBeNull();
+    await findWorkerCard('Ana');
+    expect(within(workerCard('Ana')).getByRole('button', { name: 'Invite Ana' })).toBeEnabled();
+    expect(within(workerCard('Ben')).getByRole('button', { name: 'Invite Ben' })).toBeEnabled();
+    for (const n of ['Cy', 'Di', 'Ed']) expect(within(workerCard(n)).queryByRole('button')).toBeNull();
   });
 
   it('invites with an Idempotency-Key and expectedVersion, then shows the new status and time', async () => {
@@ -38,15 +45,15 @@ describe('manager: invite', () => {
     renderApp('/manager');
     await userEvent.click(await screen.findByRole('button', { name: 'Invite Amara Okafor' }));
 
-    await waitFor(() => expect(within(row('Amara Okafor')).getByText('Invited')).toBeInTheDocument());
+    await waitFor(() => expect(trackerOf('Amara Okafor')).toHaveTextContent('Invited'));
     const [post] = api.posts();
     expect(post).toMatchObject({
       url: '/api/shifts/harbourfront-gala/workers/amara/actions',
       body: { action: 'invite', expectedVersion: 0 },
     });
     expect(post!.headers['idempotency-key']).toMatch(/^[0-9a-f-]{36}$/);
-    expect(within(row('Amara Okafor')).getByText(/3:01\sp\.m\./)).toBeInTheDocument(); // invitedAt in Toronto time
-    expect(within(row('Amara Okafor')).queryByRole('button')).toBeNull();
+    expect(detail(workerCard('Amara Okafor'), 'Invited')).toHaveTextContent(/3:01\sp\.m\./); // invitedAt in Toronto time
+    expect(within(workerCard('Amara Okafor')).queryByRole('button')).toBeNull();
   });
 
   it('a double click while the request is in flight sends one request', async () => {
@@ -58,7 +65,7 @@ describe('manager: invite', () => {
     expect(button).toBeDisabled();
     expect(button).toHaveTextContent('Invite…');
     release();
-    await waitFor(() => expect(within(row('Liam Chen')).getByText('Invited')).toBeInTheDocument());
+    await waitFor(() => expect(trackerOf('Liam Chen')).toHaveTextContent('Invited'));
     expect(api.posts()).toHaveLength(1);
   });
 
@@ -67,13 +74,19 @@ describe('manager: invite', () => {
     // Someone else accepted Sofia's place meanwhile; the server refuses.
     api.nextPost.push(
       new Response(
-        JSON.stringify({ code: 'INVALID_TRANSITION', message: "Can't invite Sofia Rossi: they are Accepted.", current: {} }),
+        JSON.stringify({
+          code: 'INVALID_TRANSITION',
+          message: "Can't invite Sofia Rossi: they are Accepted.",
+          current: {},
+        }),
         { status: 409, headers: { 'content-type': 'application/json' } },
       ),
     );
     renderApp('/manager');
     await userEvent.click(await screen.findByRole('button', { name: 'Invite Sofia Rossi' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent("Can't invite Sofia Rossi: they are Accepted.");
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Can't invite Sofia Rossi: they are Accepted.",
+    );
   });
 
   it('retries a lost request with the same Idempotency-Key', async () => {
@@ -81,7 +94,7 @@ describe('manager: invite', () => {
     api.nextPost.push(new TypeError('Failed to fetch'));
     renderApp('/manager');
     await userEvent.click(await screen.findByRole('button', { name: 'Invite Amara Okafor' }));
-    await waitFor(() => expect(within(row('Amara Okafor')).getByText('Invited')).toBeInTheDocument(), {
+    await waitFor(() => expect(trackerOf('Amara Okafor')).toHaveTextContent('Invited'), {
       timeout: 3000,
     });
     const [first, retry] = api.posts();
@@ -92,7 +105,8 @@ describe('manager: invite', () => {
 });
 
 describe('worker: accept, decline, cancel', () => {
-  const pick = async (name: string) => userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
+  const pick = async (name: string) =>
+    userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
 
   it('shows only the buttons the transition table allows', async () => {
     fakeApi(
@@ -106,7 +120,8 @@ describe('worker: accept, decline, cancel', () => {
       ]),
     );
     renderApp('/worker');
-    const buttons = () => screen.queryAllByRole('button', { name: /^(Accept|Decline|Cancel) / }).map((b) => b.textContent);
+    const buttons = () =>
+      screen.queryAllByRole('button', { name: /^(Accept|Decline|Cancel) / }).map((b) => b.textContent);
 
     await pick('Ana');
     expect(buttons()).toEqual([]);
@@ -124,7 +139,9 @@ describe('worker: accept, decline, cancel', () => {
   });
 
   it('accept → cancel → accept again, with the status updating each time', async () => {
-    const api = fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited', version: 1 })]));
+    const api = fakeApi(
+      makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited', version: 1 })]),
+    );
     renderApp('/worker');
     await pick('Amara Okafor');
 
@@ -180,17 +197,22 @@ describe('worker: accept, decline, cancel', () => {
       workers: [{ ...start.workers[0]!, participation: 'accepted', version: 2 }],
     });
     await userEvent.click(screen.getByRole('button', { name: 'Decline Amara Okafor' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/changed since you loaded it\. They are now Accepted/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /changed since you loaded it\. They are now Accepted/,
+    );
     await waitFor(() => expect(screen.getByTestId('my-participation')).toHaveTextContent('Accepted'));
   });
 });
 
 describe('worker: check in and check out', () => {
-  const pick = async (name: string) => userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
+  const pick = async (name: string) =>
+    userEvent.selectOptions(await screen.findByLabelText('Who are you?'), name);
   const buttons = () => screen.queryAllByRole('button', { name: /Amara Okafor$/ }).map((b) => b.textContent);
 
   it('Accepted → Check in (Cancel still offered) → Check out (Cancel gone) → final, with times shown', async () => {
-    const api = fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]));
+    const api = fakeApi(
+      makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]),
+    );
     renderApp('/worker');
     await pick('Amara Okafor');
     expect(buttons()).toEqual(['Check in', 'Cancel']);
@@ -198,7 +220,7 @@ describe('worker: check in and check out', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Check in Amara Okafor' }));
     await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked in'));
     expect(buttons()).toEqual(['Check out']);
-    expect(screen.getByText(/3:01\sp\.m\./)).toBeInTheDocument(); // checkedInAt in Toronto time
+    expect(detail(document.body, 'Checked in')).toHaveTextContent(/3:01\sp\.m\./); // checkedInAt in Toronto time
 
     await userEvent.click(screen.getByRole('button', { name: 'Check out Amara Okafor' }));
     await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked out'));
@@ -220,7 +242,9 @@ describe('worker: check in and check out', () => {
   });
 
   it('a double click on Check in sends one request', async () => {
-    const api = fakeApi(makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]));
+    const api = fakeApi(
+      makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 })]),
+    );
     renderApp('/worker');
     await pick('Amara Okafor');
     const release = api.holdPosts();
@@ -232,10 +256,13 @@ describe('worker: check in and check out', () => {
 
   it('the manager table shows check-in / check-out times and counts after the worker acts', async () => {
     const api = fakeApi(
-      makeSnapshot([
-        worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 }),
-        worker('liam', 'Liam Chen', { participation: 'accepted', version: 2 }),
-      ], { acceptedCount: 2 }),
+      makeSnapshot(
+        [
+          worker('amara', 'Amara Okafor', { participation: 'accepted', version: 2 }),
+          worker('liam', 'Liam Chen', { participation: 'accepted', version: 2 }),
+        ],
+        { acceptedCount: 2 },
+      ),
     );
     renderApp('/worker');
     await pick('Amara Okafor');
@@ -248,14 +275,14 @@ describe('worker: check in and check out', () => {
     await waitFor(() => expect(screen.getByTestId('my-attendance')).toHaveTextContent('Checked out'));
 
     await userEvent.click(screen.getByRole('link', { name: 'Manager' }));
-    await screen.findByRole('table');
+    await findWorkerCard('Amara Okafor');
     await waitFor(() => expect(screen.getByTestId('count-checked-out')).toHaveTextContent('1'));
     expect(screen.getByTestId('count-checked-in')).toHaveTextContent('1');
     expect(screen.getByTestId('count-filled')).toHaveTextContent('2');
     expect(screen.getByTestId('count-remaining')).toHaveTextContent('1');
     // Clock ticks a minute per POST from 20:00Z: 3:01, 3:02, 3:03 p.m. Toronto.
-    expect(row('Amara Okafor')).toHaveTextContent(/3:01\sp\.m\./);
-    expect(row('Liam Chen')).toHaveTextContent(/3:02\sp\.m\..*3:03\sp\.m\./);
+    expect(workerCard('Amara Okafor')).toHaveTextContent(/3:01\sp\.m\./);
+    expect(workerCard('Liam Chen')).toHaveTextContent(/3:02\sp\.m\..*3:03\sp\.m\./);
     expect(api.snapshot.shift.acceptedCount).toBe(2);
   });
 });
@@ -266,14 +293,16 @@ describe('counts stay consistent with the list', () => {
     renderApp('/manager');
     for (const name of ['Amara Okafor', 'Liam Chen']) {
       await userEvent.click(await screen.findByRole('button', { name: `Invite ${name}` }));
-      await waitFor(() => expect(within(row(name)).getByText('Invited')).toBeInTheDocument());
+      await waitFor(() => expect(trackerOf(name)).toHaveTextContent('Invited'));
     }
     // Workers respond in another tab.
     const s = api.snapshot;
     api.setSnapshot({
       ...s,
       shift: { ...s.shift, acceptedCount: 2 },
-      workers: s.workers.map((w) => (w.participation === 'invited' ? { ...w, participation: 'accepted' } : w)),
+      workers: s.workers.map((w) =>
+        w.participation === 'invited' ? { ...w, participation: 'accepted' } : w,
+      ),
     });
     await userEvent.click(screen.getByRole('button', { name: 'Invite Sofia Rossi' }));
     await waitFor(() => expect(counts()).toEqual({ filled: 2, remaining: 0 }));

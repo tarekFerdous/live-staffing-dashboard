@@ -47,6 +47,11 @@ export const SnapshotSchema = z.object({
   shift: ShiftSchema,
   workers: z.array(WorkerSchema),
   seq: z.number().int().nonnegative(),
+  /**
+   * Bumped by every reset. `seq` restarts at 0 after a reset, so a newer epoch (not a higher
+   * seq) is what tells a page that its state is from before the reset.
+   */
+  epoch: z.number().int().nonnegative(),
 });
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 
@@ -61,6 +66,14 @@ export const ShiftEventSchema = z.object({
   row: WorkerSchema,
   at: isoInstant,
   publishedAt: isoInstant.optional(),
+  /** `'event'` on live pushes; a message without `kind` is also an event (older publishers). */
+  kind: z.literal('event').optional(),
+  /**
+   * The shift's epoch when the change was made. A page drops events from an older epoch, so a
+   * change delivered late from before a reset can never be applied on top of the reset shift.
+   * Absent on events written before epochs existed.
+   */
+  epoch: z.number().int().nonnegative().optional(),
 });
 export type ShiftEventMessage = z.infer<typeof ShiftEventSchema>;
 
@@ -71,6 +84,8 @@ export const EventsPageSchema = z.object({
   events: z.array(ShiftEventSchema),
   /** True when more events exist after the last one returned. */
   hasMore: z.boolean(),
+  /** The shift's current epoch, so a page that missed a reset notices it on catch-up. */
+  epoch: z.number().int().nonnegative(),
 });
 export type EventsPage = z.infer<typeof EventsPageSchema>;
 
@@ -100,6 +115,16 @@ export const RuntimeConfigSchema = z.object({
     .nullable(),
 });
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+
+/** `POST /api/demo/reset` → every seeded shift with its new epoch. */
+export const DemoResetResponseSchema = z.object({
+  shifts: z.array(z.object({ id: z.string().min(1), epoch: z.number().int().positive() })),
+});
+export type DemoResetResponse = z.infer<typeof DemoResetResponseSchema>;
+
+/** Live messages on a shift's channel: an event, or "the shift was reset to `epoch`". */
+export const ResetMessageSchema = z.object({ kind: z.literal('reset'), epoch: z.number().int().positive() });
+export type ResetMessage = z.infer<typeof ResetMessageSchema>;
 
 export const ApiErrorSchema = z.object({
   code: z.string(),

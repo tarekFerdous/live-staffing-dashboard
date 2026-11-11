@@ -1,4 +1,7 @@
 import { TRANSITIONS, type Action, type ShiftEventMessage } from '@staffing/domain';
+import type { ReactNode } from 'react';
+import { Card } from './Card';
+import { ActivityIcon } from './icons';
 import { formatTime } from '../lib/time';
 import { TIMELINE_LIMIT } from '../lib/useTimeline';
 
@@ -18,33 +21,41 @@ export function describeEvent(e: ShiftEventMessage): string {
     : `${e.row.name} ${VERB[e.type]}`;
 }
 
+/** The Activity card's shell, also used for its loading and error states. */
+export function ActivityCard({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <Card icon={<ActivityIcon />} title="Activity" subtitle="Live timeline" className={className}>
+      {children}
+    </Card>
+  );
+}
+
 /** Recent changes, newest first, times in the shift's timezone. */
 export function ActivityTimeline({
   events,
   timeZone,
+  className,
 }: {
   events: readonly ShiftEventMessage[];
   timeZone: string;
+  className?: string;
 }) {
   const newestFirst = [...events].sort((a, b) => b.seq - a.seq).slice(0, TIMELINE_LIMIT);
   return (
-    <section aria-labelledby="activity-title" className="card p-4">
-      <h2 id="activity-title" className="text-lg font-semibold">
-        Activity
-      </h2>
+    <ActivityCard className={className}>
       {newestFirst.length === 0 ? (
-        <p className="mt-2 text-sm text-muted">No activity yet.</p>
+        <p className="text-sm text-muted">No activity yet.</p>
       ) : (
-        <ol aria-label="Activity, newest first" className="mt-3 space-y-2" data-testid="timeline">
+        <ol aria-label="Activity, newest first" className="divide-y divide-border" data-testid="timeline">
           {newestFirst.map((e) => {
             const actor = TRANSITIONS[e.type].actor;
             return (
-              <li key={e.seq} className="flex items-baseline gap-3 text-sm">
-                <time dateTime={e.at} className="w-20 shrink-0 tabular-nums text-muted">
+              <li key={e.seq} className="flex items-baseline gap-3 py-2 text-sm first:pt-0 last:pb-0">
+                <time dateTime={e.at} className="w-20 shrink-0 text-muted tabular-nums">
                   {formatTime(e.at, timeZone)}
                 </time>
-                <span className="min-w-0 flex-1">{describeEvent(e)}</span>
-                <span className="shrink-0 text-xs uppercase tracking-wide text-muted">
+                <span className="min-w-0 flex-1 font-medium">{describeEvent(e)}</span>
+                <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted">
                   {actor === 'manager' ? 'Manager' : 'Worker'}
                 </span>
               </li>
@@ -52,6 +63,6 @@ export function ActivityTimeline({
           })}
         </ol>
       )}
-    </section>
+    </ActivityCard>
   );
 }

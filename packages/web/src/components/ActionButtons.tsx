@@ -3,11 +3,12 @@ import { useLive } from '../lib/live';
 import { useWorkerAction } from '../lib/useWorkerAction';
 import { PAUSED_NOTICE_ID } from './LiveStatus';
 
+// The step forward is the black primary pill; everything else is a grey pill.
 const STYLE: Record<Action, string> = {
   invite: 'btn-primary',
   accept: 'btn-primary',
   decline: 'btn-secondary',
-  cancel: 'btn-danger',
+  cancel: 'btn-secondary',
   check_in: 'btn-primary',
   check_out: 'btn-primary',
 };
@@ -33,7 +34,7 @@ export function ActionButtons({
   const allowed = actions.filter((a) => canApply(worker, a));
   if (allowed.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row [&>*]:flex-1">
       {allowed.map((a) => (
         <button
           key={a}

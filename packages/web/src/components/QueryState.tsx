@@ -9,17 +9,23 @@ export function QueryState<T>({
   query: UseQueryResult<T>;
   children: (data: T) => ReactNode;
 }) {
-  if (query.isPending) return <p className="text-muted">Loading shift…</p>;
+  if (query.isPending) {
+    return (
+      <p className="card px-5 py-4 text-muted" aria-busy="true">
+        Loading shift…
+      </p>
+    );
+  }
   if (query.isError) {
     return (
-      <div role="alert" className="rounded-xl border border-border bg-bad-bg p-4 text-bad-fg">
-        <p className="font-medium">Couldn't load the shift.</p>
-        <p className="mt-1 text-sm">{query.error.message}</p>
+      <div role="alert" className="card p-5">
+        <p className="font-semibold text-bad-fg">Couldn't load the shift.</p>
+        <p className="mt-1 text-sm text-muted">{query.error.message}</p>
         <button
           type="button"
           onClick={() => void query.refetch()}
           disabled={query.isFetching}
-          className="btn btn-danger mt-3"
+          className="btn btn-primary mt-4"
         >
           {query.isFetching ? 'Retrying…' : 'Retry'}
         </button>

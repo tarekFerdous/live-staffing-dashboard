@@ -10,6 +10,7 @@ export type Call = { method: string; url: string; headers: Record<string, string
  * responses (or thrown errors) for the following POSTs.
  */
 export function fakeApi(initial: Snapshot) {
+  const seed: Snapshot = structuredClone(initial);
   let snap: Snapshot = structuredClone(initial);
   const calls: Call[] = [];
   const nextPost: (Response | Error)[] = [];
@@ -30,12 +31,20 @@ export function fakeApi(initial: Snapshot) {
     });
     if (r.kind !== 'applied') return r;
     snap = {
+      ...snap,
       shift: { ...snap.shift, acceptedCount: snap.shift.acceptedCount + r.acceptedDelta },
       workers: snap.workers.map((w) => (w.id === workerId ? r.worker : w)),
       seq: snap.seq + 1,
     };
-    events.push({ seq: snap.seq, type: action, workerId, row: r.worker, at });
+    events.push({ seq: snap.seq, type: action, workerId, row: r.worker, at, epoch: snap.epoch });
     return r;
+  }
+
+  /** What the server's reset does: the starting snapshot, an empty log and the next epoch. */
+  function reset() {
+    snap = { ...structuredClone(seed), epoch: snap.epoch + 1 };
+    events.length = 0;
+    return snap.epoch;
   }
 
   const fetchFn = vi.fn(async (url: string, init: RequestInit = {}) => {
@@ -44,7 +53,11 @@ export function fakeApi(initial: Snapshot) {
     calls.push({ method, url, headers: (init.headers ?? {}) as Record<string, string>, body });
     const after = /\/events\?after=(\d+)$/.exec(url);
     if (method === 'GET' && after) {
-      return jsonResponse(200, { events: events.filter((e) => e.seq > Number(after[1])), hasMore: false });
+      return jsonResponse(200, {
+        events: events.filter((e) => e.seq > Number(after[1])),
+        hasMore: false,
+        epoch: snap.epoch,
+      });
     }
     if (method === 'GET') return jsonResponse(200, snap);
     if (gate) await gate;
@@ -52,6 +65,10 @@ export function fakeApi(initial: Snapshot) {
     const canned = nextPost.shift();
     if (canned instanceof Error) throw canned;
     if (canned) return canned;
+
+    if (url === '/api/demo/reset') {
+      return jsonResponse(200, { shifts: [{ id: snap.shift.id, epoch: reset() }] });
+    }
 
     const workerId = url.split('/')[5]!;
     const { action, expectedVersion } = body as { action: Action; expectedVersion?: number };
@@ -76,6 +93,10 @@ export function fakeApi(initial: Snapshot) {
       const r = act(workerId, action);
       if (r.kind !== 'applied') throw new Error(`${action} for ${workerId} was not applied (${r.kind})`);
       return events.at(-1)!;
+    },
+    /** The shift is reset (by another session or the CLI); returns the live reset message. */
+    reset() {
+      return { kind: 'reset' as const, epoch: reset() };
     },
     /** Hold every POST until the returned release function is called. */
     holdPosts() {

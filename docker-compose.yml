@@ -33,6 +33,7 @@ services:
       - functions_modules:/app/packages/functions/node_modules
       - web_modules:/app/packages/web/node_modules
       - infra_modules:/app/packages/infra/node_modules
+      - e2e_modules:/app/packages/e2e/node_modules
       - pnpm_store:/pnpm-store
     depends_on:
       - dynamodb
@@ -56,4 +57,5 @@ volumes:
   functions_modules:
   web_modules:
   infra_modules:
+  e2e_modules:
   pnpm_store:

@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { LiveIcon } from './components/icons';
 import { LivePausedNotice, LiveStatusBar } from './components/LiveStatus';
+import { ResetDemo } from './components/ResetDemo';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ToastProvider } from './components/Toast';
 import { LiveProvider } from './lib/live';
@@ -14,25 +16,31 @@ export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 5_000 } } });
 }
 
+// Pill navigation: the active page is a black pill (white in dark mode).
 const link = ({ isActive }: { isActive: boolean }) =>
-  `rounded-md px-3 py-1.5 text-sm font-semibold ${isActive ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'}`;
+  `rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+    isActive ? 'bg-primary text-primary-fg' : 'text-muted hover:bg-secondary hover:text-fg'
+  }`;
 
 function Layout() {
+  const onManager = useLocation().pathname.startsWith('/manager');
   return (
-    <div className="min-h-screen bg-bg text-fg">
+    <div className="min-h-screen text-fg">
       <a
         href="#main"
-        className="sr-only rounded-md bg-accent px-3 py-2 text-accent-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
+        className="sr-only rounded-full bg-primary px-4 py-2 text-primary-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
       >
         Skip to content
       </a>
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <span className="flex items-center gap-2 font-bold tracking-tight">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm bg-accent" />
+      <header>
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-3 px-4 pt-5 pb-2">
+          <span className="flex items-center gap-2 text-base font-bold tracking-tight">
+            <span className="icon-badge h-7 w-7">
+              <LiveIcon size={14} />
+            </span>
             Live Staffing
           </span>
-          <nav aria-label="Main" className="flex gap-1">
+          <nav aria-label="Main" className="card flex gap-1 rounded-full p-1">
             <NavLink to="/manager" className={link}>
               Manager
             </NavLink>
@@ -40,8 +48,10 @@ function Layout() {
               Worker
             </NavLink>
           </nav>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:ml-auto">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:ml-auto">
             <LiveStatusBar />
+            {/* Demo controls sit together; resetting is the manager's. */}
+            {onManager && <ResetDemo />}
             <ThemeToggle />
           </div>
         </div>

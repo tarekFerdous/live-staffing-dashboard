@@ -70,7 +70,14 @@ describe('local change feed', () => {
         [1, 'invite', 'invited'],
         [2, 'accept', 'accepted'],
       ]);
-      expect(parsed.every((e) => typeof e.publishedAt === 'string')).toBe(true);
+      expect(parsed.every((e) => e.kind === 'event' && typeof e.publishedAt === 'string')).toBe(true);
+
+      // A reset reaches subscribers as one reset message with the new epoch, then events start at seq 1.
+      const epoch = await store.resetShift(SEED);
+      await store.applyAction(SEED.shift.id, worker, 'invite');
+      await until(() => received.length === 4);
+      expect(received[2]).toEqual({ kind: 'reset', epoch });
+      expect(ShiftEventSchema.parse(received[3]).seq).toBe(1);
     } finally {
       conn.close();
       await feed.stop();

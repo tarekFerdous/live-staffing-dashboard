@@ -1,0 +1,23 @@
+{
+  "name": "@staffing/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "measure": "tsx scripts/measure.ts",
+    "measure:render": "tsx scripts/render-table.ts",
+    "screenshots": "tsx scripts/screenshots.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1166.0",
+    "@aws-sdk/client-cloudwatch": "^3.1166.0",
+    "@aws-sdk/client-lambda": "^3.1166.0",
+    "@aws-sdk/credential-providers": "^3.1166.0",
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.23.15"
+  }
+}
