@@ -6,13 +6,20 @@ import {
   makeIdempotent,
 } from '@aws-lambda-powertools/idempotency';
 import { DynamoDBPersistenceLayer } from '@aws-lambda-powertools/idempotency/dynamodb';
-import { ActionRequestSchema, type ActionRequest } from '@staffing/domain';
+import { ActionRequestSchema, apiErrorMap, type ActionRequest } from '@staffing/domain';
 import type { ActionOutcome, ShiftStore } from '@staffing/store';
 import type { Context } from 'aws-lambda';
 import { error, json, withErrors, type HttpEvent, type HttpResult } from './http';
 
 export const IDEMPOTENCY_HEADER = 'idempotency-key';
 const KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+/** A real action body is ~50 bytes; anything over 1 KB is refused before it is parsed. */
+export const MAX_ACTION_BODY_BYTES = 1024;
+
+/** The body as sent (API Gateway base64-encodes some content types). */
+function rawBody(event: HttpEvent): Buffer {
+  return Buffer.from(event.body ?? '', event.isBase64Encoded ? 'base64' : 'utf8');
+}
 
 export type ActionHandlerDeps = {
   store: ShiftStore;
@@ -30,25 +37,28 @@ const LOCAL_CONTEXT = { getRemainingTimeInMillis: () => 10_000 } as Context;
 class BusyError extends Error {}
 
 type Parsed =
-  | { ok: true; shiftId: string; workerId: string; request: ActionRequest }
-  | { ok: false; result: HttpResult };
+  { ok: true; shiftId: string; workerId: string; request: ActionRequest } | { ok: false; result: HttpResult };
 
 function parse(event: HttpEvent): Parsed {
   const shiftId = event.pathParameters?.shiftId;
   const workerId = event.pathParameters?.workerId;
-  if (!shiftId || !workerId) return { ok: false, result: error(404, 'NOT_FOUND', 'Unknown shift or worker.') };
+  if (!shiftId || !workerId)
+    return { ok: false, result: error(404, 'NOT_FOUND', 'Unknown shift or worker.') };
 
   let body: unknown;
   try {
-    body = JSON.parse(event.body ?? '');
+    body = JSON.parse(rawBody(event).toString('utf8'));
   } catch {
     return { ok: false, result: error(422, 'VALIDATION_FAILED', 'The request body must be JSON.') };
   }
-  const parsed = ActionRequestSchema.safeParse(body);
+  const parsed = ActionRequestSchema.safeParse(body, { error: apiErrorMap });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const where = issue?.path.length ? `${issue.path.join('.')}: ` : '';
-    return { ok: false, result: error(422, 'VALIDATION_FAILED', `Invalid request. ${where}${issue?.message ?? ''}`.trim()) };
+    return {
+      ok: false,
+      result: error(422, 'VALIDATION_FAILED', `Invalid request. ${where}${issue?.message ?? ''}`.trim()),
+    };
   }
   return { ok: true, shiftId, workerId, request: parsed.data };
 }
@@ -73,36 +83,53 @@ function toHttp(outcome: ActionOutcome): HttpResult {
  * Body `{ action, expectedVersion? }`, header `Idempotency-Key` (one per user intent, reused on retries).
  */
 export function makeActionHandler(deps: ActionHandlerDeps) {
-  const persistenceStore = new DynamoDBPersistenceLayer({
-    tableName: deps.idempotency.tableName,
-    awsSdkV3Client: deps.idempotency.client,
-  });
-  const config = new IdempotencyConfig({
-    // Scoped to the path so a key can never replay a response for another worker.
-    eventKeyJmesPath: `[headers."${IDEMPOTENCY_HEADER}", rawPath]`,
-    // Reusing a key with a different body is a client bug, not a retry.
-    payloadValidationJmesPath: 'body',
-    expiresAfterSeconds: 3600,
-    throwOnNoIdempotencyKey: true,
-  });
-
-  const run = makeIdempotent(
-    async (event: HttpEvent, _context: Context): Promise<HttpResult> => {
-      const p = parse(event);
-      if (!p.ok) return p.result; // unreachable: validated before the idempotent section
-      const outcome = await deps.store.applyAction(p.shiftId, p.workerId, p.request.action, {
-        expectedVersion: p.request.expectedVersion,
-        now: deps.now,
-      });
-      return toHttp(outcome);
-    },
-    { persistenceStore, config },
-  );
+  /** The idempotent section, built on the first valid request rather than during the cold start (#94). */
+  let idempotent: ((event: HttpEvent, context: Context) => Promise<HttpResult>) | null = null;
+  const run = (event: HttpEvent, context: Context) => {
+    idempotent ??= makeIdempotent(
+      async (e: HttpEvent, _context: Context): Promise<HttpResult> => {
+        const p = parse(e);
+        if (!p.ok) return p.result; // unreachable: validated before the idempotent section
+        const outcome = await deps.store.applyAction(p.shiftId, p.workerId, p.request.action, {
+          expectedVersion: p.request.expectedVersion,
+          now: deps.now,
+        });
+        return toHttp(outcome);
+      },
+      {
+        persistenceStore: new DynamoDBPersistenceLayer({
+          tableName: deps.idempotency.tableName,
+          awsSdkV3Client: deps.idempotency.client,
+        }),
+        config: new IdempotencyConfig({
+          // Scoped to the path so a key can never replay a response for another worker.
+          eventKeyJmesPath: `[headers."${IDEMPOTENCY_HEADER}", rawPath]`,
+          // Reusing a key with a different body is a client bug, not a retry.
+          payloadValidationJmesPath: 'body',
+          expiresAfterSeconds: 3600,
+          throwOnNoIdempotencyKey: true,
+        }),
+      },
+    );
+    return idempotent(event, context);
+  };
 
   return withErrors(async (event: HttpEvent, context?: Context) => {
+    // First, so an oversized body never reaches JSON.parse, zod or the store.
+    if (rawBody(event).byteLength > MAX_ACTION_BODY_BYTES) {
+      return error(
+        413,
+        'PAYLOAD_TOO_LARGE',
+        `The request body is too large (at most ${MAX_ACTION_BODY_BYTES} bytes).`,
+      );
+    }
     const key = event.headers?.[IDEMPOTENCY_HEADER];
     if (!key || !KEY_PATTERN.test(key)) {
-      return error(422, 'VALIDATION_FAILED', 'An Idempotency-Key header (8–128 letters, digits, - or _) is required.');
+      return error(
+        422,
+        'VALIDATION_FAILED',
+        'An Idempotency-Key header (8–128 letters, digits, - or _) is required.',
+      );
     }
     const p = parse(event);
     if (!p.ok) return p.result; // bad input is answered without recording the key
@@ -114,10 +141,18 @@ export function makeActionHandler(deps: ActionHandlerDeps) {
         return error(503, 'BUSY', 'The shift is busy right now. Please try again.');
       }
       if (err instanceof IdempotencyAlreadyInProgressError) {
-        return error(409, 'REQUEST_IN_PROGRESS', 'This request is already being processed. Please wait a moment.');
+        return error(
+          409,
+          'REQUEST_IN_PROGRESS',
+          'This request is already being processed. Please wait a moment.',
+        );
       }
       if (err instanceof IdempotencyValidationError) {
-        return error(422, 'IDEMPOTENCY_KEY_REUSED', 'This Idempotency-Key was already used for a different request.');
+        return error(
+          422,
+          'IDEMPOTENCY_KEY_REUSED',
+          'This Idempotency-Key was already used for a different request.',
+        );
       }
       throw err;
     }

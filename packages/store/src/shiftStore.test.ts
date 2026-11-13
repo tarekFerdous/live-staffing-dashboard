@@ -196,3 +196,81 @@ describe('shift store against DynamoDB Local', () => {
     expect(Table?.StreamSpecification).toEqual({ StreamEnabled: true, StreamViewType: 'NEW_IMAGE' });
   });
 });
+
+describe('#91 one-read safety net: events after a seq plus the epoch', () => {
+  /** Records every command the store sends, with its input. */
+  function recording(doc: DynamoDBDocumentClient) {
+    const sent: { name: string; input: Record<string, unknown> }[] = [];
+    const client = {
+      send: (cmd: { constructor: { name: string }; input: Record<string, unknown> }) => {
+        sent.push({ name: cmd.constructor.name, input: cmd.input });
+        return doc.send(cmd as never);
+      },
+    } as unknown as DynamoDBDocumentClient;
+    return { client, sent };
+  }
+
+  async function shiftWithEvents(count: number) {
+    const { doc, tableName } = await dynamo.newTable();
+    const store = createShiftStore(doc, tableName);
+    await store.resetShift(SEED);
+    const steps = [
+      ['amara', 'invite'],
+      ['amara', 'accept'],
+      ['liam', 'invite'],
+      ['liam', 'decline'],
+      ['sofia', 'invite'],
+    ] as const;
+    for (const [w, a] of steps.slice(0, count)) await store.applyAction(SEED.shift.id, w, a);
+    return { doc, tableName, store };
+  }
+
+  it('returns only the events after the seq, plus the epoch, from a single Query', async () => {
+    const { doc, tableName } = await shiftWithEvents(4);
+    const { client, sent } = recording(doc);
+    const r = await createShiftStore(client, tableName).readEventsAndEpoch(SEED.shift.id, 2, 200);
+    expect(r.events.map((e) => [e.seq, e.workerId, e.type])).toEqual([
+      [3, 'liam', 'invite'],
+      [4, 'liam', 'decline'],
+    ]);
+    expect(r).toMatchObject({ epoch: 1, hasMore: false });
+    expect(sent.map((s) => s.name)).toEqual(['QueryCommand']);
+    expect(sent[0]!.input.ConsistentRead).toBe(true);
+  });
+
+  it('still returns the epoch when there are no new events', async () => {
+    const { doc, tableName } = await shiftWithEvents(2);
+    const { client, sent } = recording(doc);
+    const r = await createShiftStore(client, tableName).readEventsAndEpoch(SEED.shift.id, 2, 200);
+    expect(r).toEqual({ events: [], hasMore: false, epoch: 1 });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('shows an epoch change after a reset', async () => {
+    const { store } = await shiftWithEvents(3);
+    await store.resetShift(SEED);
+    expect(await store.readEventsAndEpoch(SEED.shift.id, 3, 200)).toEqual({
+      events: [],
+      hasMore: false,
+      epoch: 2,
+    });
+  });
+
+  it('reports hasMore past the limit, and still knows the epoch', async () => {
+    const { store } = await shiftWithEvents(5);
+    const r = await store.readEventsAndEpoch(SEED.shift.id, 0, 2);
+    expect(r.events.map((e) => e.seq)).toEqual([1, 2]);
+    expect(r).toMatchObject({ hasMore: true, epoch: 1 });
+    // Exactly at the limit: META still fits in the one Query.
+    expect(await store.readEventsAndEpoch(SEED.shift.id, 3, 2)).toMatchObject({ hasMore: false, epoch: 1 });
+  });
+
+  it('answers a null epoch for a shift that does not exist', async () => {
+    const { doc, tableName } = await dynamo.newTable();
+    expect(await createShiftStore(doc, tableName).readEventsAndEpoch('nope', 0, 200)).toEqual({
+      events: [],
+      hasMore: false,
+      epoch: null,
+    });
+  });
+});

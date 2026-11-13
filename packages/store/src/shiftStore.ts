@@ -68,6 +68,18 @@ export type ShiftStore = {
   applyAction(shiftId: string, workerId: string, action: Action, opts?: ApplyOptions): Promise<ActionOutcome>;
   /** Events with seq > afterSeq, oldest first; at most `limit` of them when given. */
   listEvents(shiftId: string, afterSeq?: number, limit?: number): Promise<ShiftEvent[]>;
+  /**
+   * The safety net's read (#91): events with seq > afterSeq, oldest first and at most `limit`,
+   * plus the shift's current epoch, from one Query over `EVT#<afterSeq+1> … META` (`EVT#` sorts
+   * before `META`). `hasMore` says more events exist than were returned. `epoch` is null when
+   * the shift does not exist. `consistent: false` reads eventually consistently, at half the cost.
+   */
+  readEventsAndEpoch(
+    shiftId: string,
+    afterSeq: number,
+    limit: number,
+    opts?: { consistent?: boolean },
+  ): Promise<{ events: ShiftEvent[]; hasMore: boolean; epoch: number | null }>;
 };
 
 /**
@@ -356,15 +368,46 @@ export function createShiftStore(doc: DynamoDBDocumentClient, tableName: string)
           ? await queryAll(input)
           : (((await doc.send(new QueryCommand({ ...input, TableName: tableName, Limit: limit }))).Items ??
               []) as Item[]);
-      return items.map((i) => ({
-        seq: i.seq as number,
-        type: i.type as Action,
-        workerId: i.workerId as string,
-        actor: i.actor as ShiftEvent['actor'],
-        row: toWorker(i.row as Item),
-        at: i.at as string,
-        ...(typeof i.epoch === 'number' && { epoch: i.epoch }),
-      }));
+      return items.map(toEvent);
     },
+
+    async readEventsAndEpoch(shiftId, afterSeq, limit, { consistent = true } = {}) {
+      // Events, then META as the last item. Room for one event more than `limit` (to tell whether
+      // more exist) and for META: more events than that is a long gap, rare, and costs a second read.
+      const res = await doc.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: 'PK = :pk AND SK BETWEEN :from AND :meta',
+          ExpressionAttributeValues: {
+            ':pk': shiftPk(shiftId),
+            ':from': evtSk(afterSeq + 1),
+            ':meta': META_SK,
+          },
+          ConsistentRead: consistent,
+          Limit: limit + 2,
+        }),
+      );
+      const items = (res.Items ?? []) as Item[];
+      const meta = items.find((i) => i.SK === META_SK);
+      const events = items.filter((i) => i.SK !== META_SK).map(toEvent);
+      const epoch = meta
+        ? ((meta.epoch as number | undefined) ?? 0)
+        : res.LastEvaluatedKey
+          ? await getEpoch(shiftId)
+          : null;
+      return { events: events.slice(0, limit), hasMore: events.length > limit, epoch };
+    },
+  };
+}
+
+function toEvent(i: Item): ShiftEvent {
+  return {
+    seq: i.seq as number,
+    type: i.type as Action,
+    workerId: i.workerId as string,
+    actor: i.actor as ShiftEvent['actor'],
+    row: toWorker(i.row as Item),
+    at: i.at as string,
+    ...(typeof i.epoch === 'number' && { epoch: i.epoch }),
   };
 }

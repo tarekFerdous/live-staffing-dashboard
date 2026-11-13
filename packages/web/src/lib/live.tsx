@@ -21,7 +21,7 @@ import {
   type Transport,
 } from './sync/shiftSync';
 import { snapshotKey } from './useSnapshot';
-import { addTimelineEvents, resetTimeline } from './useTimeline';
+import { addTimelineEvents, resetTimeline } from './timelineCache';
 
 /** `off` means this build has no live channel configured (actions refetch instead). */
 export type LiveStatus = SyncStatus | 'off';
@@ -58,6 +58,19 @@ function useOnline(): boolean {
   return online;
 }
 
+const isVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+
+/** Whether this tab is visible. A hidden tab pauses live sync (#93). */
+function useVisible(): boolean {
+  const [visible, setVisible] = useState(isVisible);
+  useEffect(() => {
+    const update = () => setVisible(isVisible());
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, []);
+  return visible;
+}
+
 /**
  * Runs the framework-free shift sync for one shift and writes every snapshot it
  * produces into the TanStack Query cache, so components keep reading `useSnapshot`.
@@ -70,6 +83,7 @@ export function useShiftSync(
   blocked: boolean,
   /** Must be stable across renders (it is read whenever the sync writes a snapshot). */
   pending: Map<string, PendingRow>,
+  visible = true,
 ) {
   const queryClient = useQueryClient();
   const [sync, setSync] = useState<ShiftSync | null>(null);
@@ -90,6 +104,7 @@ export function useShiftSync(
         resetTimeline(queryClient, shiftId);
       },
       online: navigator.onLine,
+      visible: isVisible(),
     });
     const offer = (data: unknown) => {
       if (data) s.adoptSnapshot(data as Snapshot);
@@ -111,6 +126,7 @@ export function useShiftSync(
 
   useEffect(() => sync?.setOnline(online), [sync, online]);
   useEffect(() => sync?.setBlocked(blocked), [sync, blocked]);
+  useEffect(() => sync?.setVisible(visible), [sync, visible]);
 
   const state = useSyncExternalStore(sync ? sync.subscribe : noopSubscribe, sync ? sync.getState : () => OFF);
   return { sync, state };
@@ -137,9 +153,10 @@ export function LiveProvider({
   children: ReactNode;
 }) {
   const online = useOnline();
+  const visible = useVisible();
   const [outage, setOutage] = useState(false);
   const pending = useRef(new Map<string, PendingRow>()).current;
-  const { sync, state } = useShiftSync(transport, shiftId, online, outage, pending);
+  const { sync, state } = useShiftSync(transport, shiftId, online, outage, pending, visible);
   const ingest = useCallback((seq: number, row: Worker) => sync?.ingest(seq, row), [sync]);
 
   const value = useMemo<Live>(() => {

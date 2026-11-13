@@ -1,0 +1,48 @@
+{
+  "measuredAt": "2026-11-13T10:45:41.501Z",
+  "runs": 3,
+  "functions": {
+    "Site": {
+      "initMs": [119.64, 121.72, 113.86],
+      "durationMs": [4.3, 4.25, 4.05],
+      "memoryMb": 75,
+      "median": 119.64
+    },
+    "GetConfig": {
+      "initMs": [142.93, 135.13, 85.45],
+      "durationMs": [4.9, 3.3, 2.28],
+      "memoryMb": 72,
+      "median": 135.13
+    },
+    "GetShift": {
+      "initMs": [194.26, 240.94, 194.09],
+      "durationMs": [237.62, 312.44, 234.26],
+      "memoryMb": 99,
+      "median": 194.26
+    },
+    "GetEvents": {
+      "initMs": [315.26, 303.66, 242.21],
+      "durationMs": [219.02, 197.41, 210.6],
+      "memoryMb": 88,
+      "median": 303.66
+    },
+    "PostAction": {
+      "initMs": [183.47, 261.56, 243.92],
+      "durationMs": [232.33, 297.88, 309.94],
+      "memoryMb": 94,
+      "median": 243.92
+    },
+    "DemoReset": {
+      "initMs": [313.39, 310.28, 218.65],
+      "durationMs": [336.52, 334, 295.96],
+      "memoryMb": 90,
+      "median": 310.28
+    },
+    "Publisher": {
+      "initMs": [193.4, 174.13, 304.86],
+      "durationMs": [3.57, 3.71, 5.26],
+      "memoryMb": 86,
+      "median": 193.4
+    }
+  }
+}

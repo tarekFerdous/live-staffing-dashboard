@@ -11,7 +11,7 @@
     "deploy:hotswap": "cdk deploy LiveStaffingApp --hotswap --outputs-file cdk-outputs.json",
     "destroy:app": "cdk destroy LiveStaffingApp --force",
     "smoke:live": "tsx scripts/smoke-live.ts",
-    "bootstrap:aws": "cdk bootstrap --app \"tsx bin/bootstrap.ts\" --profile staffing && cdk deploy --app \"tsx bin/bootstrap.ts\" --profile staffing --require-approval never --outputs-file bootstrap-outputs.json"
+    "bootstrap:aws": "cdk deploy --app \"tsx bin/bootstrap.ts\" --profile staffing --require-approval never --outputs-file bootstrap-outputs.json && tsx scripts/cdk-bootstrap.ts"
   },
   "dependencies": {
     "@aws-sdk/util-dynamodb": "^3.716.0",
@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "aws-cdk": "^2.173.2",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.25.12",
     "tsx": "^4.19.2"
   }
 }

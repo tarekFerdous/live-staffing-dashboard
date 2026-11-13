@@ -27,6 +27,8 @@ const { values: args } = parseArgs({
     runs: { type: 'string', default: '100' },
     'recovery-runs': { type: 'string', default: '20' },
     conditions: { type: 'string', default: '' },
+    /** Only the cold-start measurement (stage), printed and not written: for repeated samples. */
+    'cold-only': { type: 'boolean', default: false },
   },
 });
 const RUNS = Number(args.runs);
@@ -38,7 +40,7 @@ const PAUSE_MS = STAGE ? 1_000 : 200;
 // env.ts reads BASE_URL when it is imported, so resolve the stage URL first.
 const aws = STAGE ? await import('../lib/aws') : null;
 if (STAGE && !process.env.BASE_URL) process.env.BASE_URL = await aws!.stackOutput('SiteUrl');
-const { BASE_URL, IS_STAGE, resetShift } = await import('../lib/env');
+const { BASE_URL, IS_STAGE, resetShift, SHIFT_ID } = await import('../lib/env');
 const ui = await import('../lib/ui');
 if (STAGE !== IS_STAGE) throw new Error(`--stage and BASE_URL disagree (${BASE_URL})`);
 
@@ -138,6 +140,38 @@ async function updateDelay(manager: Page, worker: Page, action: Toggle): Promise
   return t1 - (await lastClick(worker));
 }
 
+/** When the page's newest request to a URL containing `part` finished, on the page's clock. */
+async function responseEnd(page: Page, part: string): Promise<number> {
+  return page.evaluate((p) => {
+    const entries = performance
+      .getEntriesByType('resource')
+      .filter((e) => e.name.includes(p)) as PerformanceResourceTiming[];
+    return performance.timeOrigin + entries.at(-1)!.responseEnd;
+  }, part);
+}
+
+/**
+ * #94 The first action after the update path went cold: click → the worker's answer arrives, and
+ * click → the manager's page shows it (the PostAction and Publisher cold starts both count).
+ */
+async function coldAction(manager: Page, worker: Page): Promise<{ answeredMs: number; seenMs: number }> {
+  const seen = await watch(ui.tracker(ui.managerWorker(manager, AMARA)), RESULT.Accept);
+  await workerAct(worker, 'Accept');
+  const t1 = await seen();
+  const t0 = await lastClick(worker);
+  return { answeredMs: (await responseEnd(worker, '/actions')) - t0, seenMs: t1 - t0 };
+}
+
+/** #94 One snapshot read from the browser right after GetShift went cold (request → full response). */
+async function coldSnapshot(page: Page): Promise<number> {
+  return page.evaluate(async (url) => {
+    const t0 = performance.now();
+    const res = await fetch(url, { cache: 'no-store' });
+    await res.json();
+    return performance.now() - t0;
+  }, `/api/shifts/${SHIFT_ID}`);
+}
+
 /** Outage off → the manager's page matches the server snapshot (row status and filled count). */
 async function recoveryTime(manager: Page, worker: Page, first: Toggle): Promise<number> {
   await ui.outageSwitch(manager).click();
@@ -184,16 +218,30 @@ async function main() {
   await ui.actionButton(manager, 'Invite', AMARA).click();
   await ui.expectWorkerStatus(worker, 'Invited');
 
-  // Cold start: the first action after the update path's Lambdas were replaced.
-  let coldStart: { ms: number; note: string } | null = null;
+  // Cold starts: the first action and the first snapshot after their Lambdas were replaced.
+  let coldStart: { ms: number; answeredMs: number; snapshotMs: number; note: string } | null = null;
   if (aws) {
-    console.log('Forcing cold starts of PostAction and Publisher…');
-    await aws.forceColdStarts(['PostAction', 'Publisher']);
+    console.log('Forcing cold starts of GetShift, PostAction and Publisher…');
+    await aws.forceColdStarts(['GetShift', 'PostAction', 'Publisher']);
+    const snapshotMs = Math.round(await coldSnapshot(manager));
+    const action = await coldAction(manager, worker);
     coldStart = {
-      ms: Math.round(await updateDelay(manager, worker, 'Accept')),
-      note: 'First Accept after PostAction and Publisher were forced cold; not part of the percentiles.',
+      ms: Math.round(action.seenMs),
+      answeredMs: Math.round(action.answeredMs),
+      snapshotMs,
+      note:
+        'First Accept after PostAction and Publisher were forced cold (click → the manager sees it; ' +
+        'answeredMs: click → the worker gets the answer), and one GET of the snapshot with GetShift ' +
+        'cold. Not part of the percentiles.',
     };
-    console.log(`Cold start: ${coldStart.ms} ms`);
+    console.log(
+      `Cold first action: ${coldStart.ms} ms to the manager (answered in ${coldStart.answeredMs} ms)`,
+    );
+    console.log(`Cold first snapshot: ${coldStart.snapshotMs} ms`);
+    if (args['cold-only']) {
+      await browser.close();
+      return;
+    }
   } else {
     await workerAct(worker, 'Accept'); // local mode has no cold starts; just get to Accepted
   }

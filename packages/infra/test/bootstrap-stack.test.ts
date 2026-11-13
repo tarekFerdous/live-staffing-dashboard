@@ -36,10 +36,12 @@ describe('BootstrapStack', () => {
     });
   });
 
-  it("can do nothing but assume the cdk-* roles", () => {
+  it('can do nothing but assume the cdk-* roles', () => {
     t.resourceCountIs('AWS::IAM::Role', 1);
     t.resourceCountIs('AWS::IAM::Policy', 0);
-    t.resourceCountIs('AWS::IAM::ManagedPolicy', 0);
+    // The only managed policy is the CFN execution policy (#84), attached to no role here.
+    t.resourceCountIs('AWS::IAM::ManagedPolicy', 1);
+    expect(Object.values(t.findResources('AWS::IAM::ManagedPolicy'))[0]!.Properties.Roles).toBeUndefined();
     const role = Object.values(t.findResources('AWS::IAM::Role'))[0]!;
     expect(role.Properties.RoleName).toBe('live-staffing-github-deploy');
     expect(role.Properties.ManagedPolicyArns).toBeUndefined();
@@ -97,6 +99,82 @@ describe('BootstrapStack', () => {
       existingOidcProviderArn: 'arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com',
     });
     Template.fromStack(stack).resourceCountIs('AWS::IAM::OIDCProvider', 0);
+  });
+});
+
+describe('#84 scoped CloudFormation execution policy', () => {
+  const t = synth();
+  type Statement = { Sid: string; Action: string | string[]; Resource: unknown; Condition?: unknown };
+  const policy = Object.values(t.findResources('AWS::IAM::ManagedPolicy'))[0]!.Properties;
+  const statements = policy.PolicyDocument.Statement as Statement[];
+  const actions = (s: Statement) => [s.Action].flat();
+  /** Resolves CDK's Fn::Join of the partition into a plain ARN string, for matching. */
+  const resources = (s: Statement): string[] =>
+    [s.Resource]
+      .flat()
+      .map((r) =>
+        typeof r === 'string'
+          ? r
+          : (r as { 'Fn::Join': [string, unknown[]] })['Fn::Join'][1]
+              .map((part) => (typeof part === 'string' ? part : 'aws'))
+              .join(''),
+      );
+
+  it('is a named managed policy, output for the re-bootstrap command', () => {
+    expect(policy.ManagedPolicyName).toBe('live-staffing-cfn-exec');
+    t.hasOutput('CfnExecPolicyArn', {});
+  });
+
+  it('allows nothing on every resource of every service (no AdministratorAccess)', () => {
+    for (const s of statements) {
+      expect(actions(s), s.Sid).not.toContain('*');
+      if (resources(s).includes('*'))
+        for (const a of actions(s)) expect(a, s.Sid).toMatch(/^(lambda|appsync|logs):/);
+    }
+  });
+
+  it('covers only the services the stack uses', () => {
+    const services = new Set(statements.flatMap((s) => actions(s).map((a) => a.split(':')[0])));
+    expect([...services].sort()).toEqual(
+      ['apigateway', 'appsync', 'dynamodb', 'iam', 'lambda', 'logs', 's3', 'ssm', 'sqs'].sort(),
+    );
+  });
+
+  it('limits every IAM action to roles and policies named after the stack', () => {
+    const iamStatements = statements.filter((s) => actions(s).some((a) => a.startsWith('iam:')));
+    expect(iamStatements.length).toBeGreaterThan(0);
+    for (const s of iamStatements) {
+      for (const a of actions(s)) expect(a.startsWith('iam:'), `${s.Sid} mixes ${a} with IAM`).toBe(true);
+      for (const r of resources(s))
+        expect(r, s.Sid).toMatch(/^arn:aws:iam::123456789012:(role|policy)\/LiveStaffingApp-\*$/);
+    }
+  });
+
+  it('attaches no managed policy but Lambda logging or the stack own policies', () => {
+    const attach = statements.filter((s) => actions(s).includes('iam:AttachRolePolicy'));
+    expect(attach).toHaveLength(1);
+    const allowed = JSON.stringify(attach[0]!.Condition);
+    expect(allowed).toContain('service-role/AWSLambdaBasicExecutionRole');
+    expect(allowed).toContain('policy/LiveStaffingApp-*');
+    expect(allowed).not.toMatch(/AdministratorAccess|PowerUser|IAMFullAccess/);
+  });
+
+  it('keeps data, functions, queues and logs on stack-prefixed names', () => {
+    const prefixed = (sid: string, pattern: RegExp) => {
+      const s = statements.find((x) => x.Sid === sid)!;
+      for (const r of resources(s)) expect(r, sid).toMatch(pattern);
+    };
+    prefixed('DynamoDbStackTables', /:table\/LiveStaffingApp-\*/);
+    prefixed('SqsStackQueues', /:LiveStaffingApp-\*$/);
+    prefixed('LogsStackGroups', /:log-group:LiveStaffingApp-\*/);
+    expect(resources(statements.find((x) => x.Sid === 'LambdaStackFunctions')!)).toContain(
+      'arn:aws:lambda:ca-central-1:123456789012:function:LiveStaffingApp-*',
+    );
+  });
+
+  it('is deployed with the CLI credentials, not through the scoped execution role', () => {
+    // No asset/deploy role lookups: the default synthesizer would add the BootstrapVersion rule.
+    expect(t.toJSON().Rules?.CheckBootstrapVersion).toBeUndefined();
   });
 });
 

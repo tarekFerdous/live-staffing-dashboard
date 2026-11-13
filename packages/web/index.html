@@ -5,13 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Live Staffing</title>
-    <script>
-      // Apply a stored theme before the first paint (no flash); storage may be unavailable.
-      try {
-        var t = localStorage.getItem('live-staffing.theme');
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-      } catch (e) {}
-    </script>
+    <!-- Applies the stored theme before the first paint. A file, not inline, so the CSP needs no 'unsafe-inline'. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

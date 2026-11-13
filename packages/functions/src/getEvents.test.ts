@@ -141,8 +141,61 @@ describe('GET /api/shifts/{shiftId}/events', () => {
     expect(JSON.parse(res.body).code).toBe('SHIFT_NOT_FOUND');
   });
 
+  /** A handler over a store whose DynamoDB commands are recorded. */
+  function recorded() {
+    const sent: { name: string; consistent: unknown }[] = [];
+    const client = {
+      send: (cmd: { constructor: { name: string }; input: { ConsistentRead?: boolean } }) => {
+        sent.push({ name: cmd.constructor.name, consistent: cmd.input.ConsistentRead });
+        return tables.doc.send(cmd as never);
+      },
+    } as unknown as typeof tables.doc;
+    const handler = makeGetEventsHandler(createShiftStore(client, tables.tableName));
+    return { sent, handler };
+  }
+  const withQuery = (q: Record<string, string>) =>
+    ({ pathParameters: { shiftId: SEED.shift.id }, queryStringParameters: q }) as unknown as HttpEvent;
+
+  it('makes one DynamoDB Query per check: events and epoch together (#91)', async () => {
+    const { sent, handler } = recorded();
+    for (const after of ['0', '2', '4']) {
+      sent.length = 0;
+      const res = await handler(get(SEED.shift.id, after));
+      expect(res.statusCode).toBe(200);
+      expect(
+        sent.map((s) => s.name),
+        `after=${after}`,
+      ).toEqual(['QueryCommand']);
+    }
+  });
+
+  it('reads strongly by default and eventually consistently for read=eventual (#92)', async () => {
+    const { sent, handler } = recorded();
+    const cases: [Record<string, string>, boolean][] = [
+      [{ after: '2' }, true],
+      [{ after: '2', read: 'strong' }, true],
+      [{ after: '2', read: 'eventual' }, false],
+    ];
+    for (const [q, consistent] of cases) {
+      sent.length = 0;
+      const res = await handler(withQuery(q));
+      expect(res.statusCode).toBe(200);
+      expect(EventsPageSchema.parse(JSON.parse(res.body)).events.map((e) => e.seq)).toEqual([3, 4]);
+      expect(sent, JSON.stringify(q)).toEqual([{ name: 'QueryCommand', consistent }]);
+    }
+  });
+
+  it('rejects an unknown read mode', async () => {
+    const res = await makeGetEventsHandler(store)(withQuery({ after: '0', read: 'fast' }));
+    expect(res.statusCode).toBe(422);
+    expect(JSON.parse(res.body).code).toBe('VALIDATION_FAILED');
+  });
+
   it('returns 500 with a readable message when the store fails', async () => {
-    const broken = { ...store, listEvents: () => Promise.reject(new Error('boom')) } satisfies ShiftStore;
+    const broken = {
+      ...store,
+      readEventsAndEpoch: () => Promise.reject(new Error('boom')),
+    } satisfies ShiftStore;
     const res = await makeGetEventsHandler(broken)(get('x'));
     expect(res.statusCode).toBe(500);
     expect(JSON.parse(res.body).message).toMatch(/try again/);

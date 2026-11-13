@@ -20,6 +20,7 @@
     "e2e": "pnpm --filter @staffing/e2e e2e",
     "measure": "pnpm --filter @staffing/e2e measure",
     "measure:render": "pnpm --filter @staffing/e2e measure:render",
+    "cold-starts": "pnpm --filter @staffing/e2e cold-starts",
     "screenshots": "pnpm --filter @staffing/e2e screenshots",
     "demo-gif": "pnpm --filter @staffing/e2e demo-gif",
     "build:web": "pnpm --filter @staffing/web build",
@@ -36,6 +37,6 @@
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
-    "vitest": "^3.0.5"
+    "vitest": "^4.1.12"
   }
 }
