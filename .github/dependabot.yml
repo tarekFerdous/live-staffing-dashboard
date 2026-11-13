@@ -1,0 +1,22 @@
+# #83: weekly update PRs, so new advisories arrive as ready-to-merge PRs that CI checks.
+version: 2
+updates:
+  # The pnpm workspace (root lockfile covers every package).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # Minor and patch bumps land together in one PR; majors stay separate for review.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Keeps the SHA-pinned actions (and their # vX.Y.Z comments) current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

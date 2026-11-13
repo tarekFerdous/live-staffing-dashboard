@@ -3,22 +3,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { AppStack } from '../lib/app-stack';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AppStack, FUNCTION_MEMORY_MB } from '../lib/app-stack';
 import { tagApp } from '../lib/config';
 
-let t: Template;
-beforeAll(() => {
+function synth(): Template {
   const site = mkdtempSync(join(tmpdir(), 'site-'));
   writeFileSync(join(site, 'index.html'), '<!doctype html>');
   const app = new App();
   tagApp(app);
-  t = Template.fromStack(
+  return Template.fromStack(
     new AppStack(app, 'App', {
       env: { account: '123456789012', region: 'ca-central-1' },
       siteAssetPath: site,
     }),
   );
+}
+
+let t: Template;
+beforeAll(() => {
+  t = synth();
 });
 
 describe('AppStack', () => {
@@ -45,6 +49,45 @@ describe('AppStack', () => {
       Environment: { Variables: { SITE_DIR: '/opt' } },
       Layers: [Match.anyValue()],
     });
+  });
+
+  it('#75 gives the Site function the AppSync domains for its CSP connect-src', () => {
+    const fns = Object.values(t.findResources('AWS::Lambda::Function')).map(
+      (f) => (f.Properties.Environment?.Variables ?? {}) as Record<string, unknown>,
+    );
+    const site = fns.find((v) => v.SITE_DIR)!;
+    const config = fns.find((v) => v.EVENTS_API_KEY)!;
+    expect(site.EVENTS_HTTP_HOST).toBeDefined();
+    expect(site.EVENTS_REALTIME_HOST).toBeDefined();
+    // The same deploy-time values the page's /api/config hands out, so the policy matches the live channel.
+    expect(site.EVENTS_HTTP_HOST).toEqual(config.EVENTS_HTTP_HOST);
+    expect(site.EVENTS_REALTIME_HOST).toEqual(config.EVENTS_REALTIME_HOST);
+  });
+
+  it('#77 throttles the stage at 50/100 by default, actions at 10/20 and reset at 1/2', () => {
+    const stages = Object.values(t.findResources('AWS::ApiGatewayV2::Stage'));
+    expect(stages).toHaveLength(1);
+    const s = stages[0]!.Properties;
+    expect(s.DefaultRouteSettings).toMatchObject({ ThrottlingRateLimit: 50, ThrottlingBurstLimit: 100 });
+    expect(s.RouteSettings).toEqual({
+      'POST /api/shifts/{shiftId}/workers/{workerId}/actions': {
+        ThrottlingRateLimit: 10,
+        ThrottlingBurstLimit: 20,
+      },
+      'POST /api/demo/reset': { ThrottlingRateLimit: 1, ThrottlingBurstLimit: 2 },
+    });
+    // Every overridden key is a real route, created before the stage that names it.
+    const routes = t.findResources('AWS::ApiGatewayV2::Route');
+    const keys = Object.values(routes).map((r) => r.Properties.RouteKey);
+    for (const key of Object.keys(s.RouteSettings)) expect(keys).toContain(key);
+    const stageDeps = [stages[0]!.DependsOn ?? []].flat();
+    for (const [id, r] of Object.entries(routes))
+      if (r.Properties.RouteKey in s.RouteSettings) expect(stageDeps).toContain(id);
+  });
+
+  it('#77 reserves no Lambda concurrency while the switch is off', () => {
+    for (const f of Object.values(t.findResources('AWS::Lambda::Function')))
+      expect(f.Properties.ReservedConcurrentExecutions).toBeUndefined();
   });
 
   it('serves the read and action routes from the HTTP API', () => {
@@ -201,5 +244,36 @@ describe('AppStack', () => {
     t.hasResourceProperties('AWS::DynamoDB::Table', {
       Tags: Match.arrayWith([{ Key: 'project', Value: 'live-staffing' }]),
     });
+  });
+});
+
+describe('#94 cold starts', () => {
+  it('runs every app function on arm64 Node 22 with the measured memory size', () => {
+    const fns = Object.values(t.findResources('AWS::Lambda::Function')).filter(
+      (f) => f.Properties.Runtime === 'nodejs22.x',
+    );
+    expect(fns.length).toBe(7);
+    for (const f of fns) {
+      expect(f.Properties).toMatchObject({ MemorySize: FUNCTION_MEMORY_MB, Architectures: ['arm64'] });
+    }
+    expect(FUNCTION_MEMORY_MB).toBe(512);
+  });
+});
+
+describe('#86 the subscribe key expiry moves forward with every deploy', () => {
+  const DAY = 24 * 3600;
+  afterEach(() => vi.useRealTimers());
+
+  it('expires 360–366 days after synth time, whenever the synth runs', () => {
+    // Synth "in" 2031: a hard-coded expiry date would be in the past there, or far off.
+    const synthAt = Date.parse('2031-03-15T12:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(synthAt);
+    const keys = Object.values(synth().findResources('AWS::AppSync::ApiKey'));
+    vi.useRealTimers();
+    expect(keys).toHaveLength(1);
+    const expires = keys[0]!.Properties.Expires as number;
+    expect(expires).toBeGreaterThanOrEqual(synthAt / 1000 + 360 * DAY);
+    expect(expires).toBeLessThanOrEqual(synthAt / 1000 + 366 * DAY);
   });
 });

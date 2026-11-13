@@ -26,7 +26,11 @@ export type Transport = {
 };
 
 export type SyncApi = {
-  fetchEvents(shiftId: string, afterSeq: number): Promise<EventsPage>;
+  /**
+   * `eventual` marks a routine periodic check: the server may read eventually consistently, at half
+   * the cost. The answer can then lag a moment behind; the sync never lets that roll a page back.
+   */
+  fetchEvents(shiftId: string, afterSeq: number, opts?: { eventual?: boolean }): Promise<EventsPage>;
   fetchSnapshot(shiftId: string): Promise<Snapshot>;
 };
 
@@ -50,6 +54,8 @@ export type SyncOptions = {
    */
   onReset?(snapshot: Snapshot): void;
   online?: boolean;
+  /** Whether the page is visible (`document.visibilityState`); a hidden page pauses (#93). */
+  visible?: boolean;
   now?: () => number;
   random?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -68,6 +74,11 @@ export type ShiftSync = {
   setOnline(online: boolean): void;
   /** Simulated outage: close the connection and stop reconnecting until unblocked. */
   setBlocked(blocked: boolean): void;
+  /**
+   * A hidden tab closes its connection and makes no requests at all (#93). Visible again, it
+   * starts as on first load: subscribe, then catch up on what it missed.
+   */
+  setVisible(visible: boolean): void;
 };
 
 export const channelFor = (shiftId: string) => `/shifts/${shiftId}`;
@@ -115,6 +126,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
 
   let started = false;
   let online = opts.online ?? true;
+  let visible = opts.visible ?? true;
   let blocked = false;
   let subscribed = false;
   let connection: { close(): void } | null = null;
@@ -218,28 +230,38 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
 
   // A catch-up read once a burst of live events goes quiet, and every VERIFY_EVERY_MS while
   // Live otherwise. One timer: a live event moves it closer, each read schedules the next.
+  // The routine periodic check reads eventually consistently (#92); the one after a burst is
+  // strong, so a page sees its own writes right away.
   let verifyTimer: unknown = null;
   function scheduleVerify(ms = VERIFY_AFTER_MS) {
     if (verifyTimer !== null) clearTimer(verifyTimer);
     verifyTimer = setTimer(() => {
       verifyTimer = null;
       if (!subscribed) return;
-      void catchUp();
+      void catchUp({ eventual: ms === VERIFY_EVERY_MS });
       scheduleVerify(VERIFY_EVERY_MS);
     }, ms);
   }
 
-  async function catchUp(): Promise<void> {
-    if (!snapshot || !started) return;
+  /** Reads what this page missed. Strongly consistent unless `eventual` (the periodic check). */
+  async function catchUp({ eventual = false } = {}): Promise<void> {
+    if (!snapshot || !started || !visible) return;
     if (catchingUp) return;
     catchingUp = true;
     if (catchUpRetry !== null) clearTimer(catchUpRetry);
     catchUpRetry = null;
     try {
       let again = true;
+      let lagging = eventual;
       while (again && started) {
         again = false;
-        const page = await opts.api.fetchEvents(opts.shiftId, snapshot!.seq);
+        const readWasEventual = lagging;
+        lagging = false; // any follow-up read is strong
+        const page = await opts.api.fetchEvents(
+          opts.shiftId,
+          snapshot!.seq,
+          readWasEventual ? { eventual: true } : undefined,
+        );
         // The shift was reset since our snapshot (we missed the live message, e.g. in an outage).
         if (page.epoch > snapshot!.epoch) {
           void resetTo(page.epoch);
@@ -257,8 +279,10 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
             adoptReset(fresh);
           } else if (fresh.epoch === snapshot!.epoch && fresh.seq > snapshot!.seq) publish(fresh);
           again = true;
-        } else if (page.events.length > 0 && snapshot!.seq < maxSeen) {
-          again = true; // events arrived during the read that it did not include yet
+        } else if (snapshot!.seq < maxSeen && (page.events.length > 0 || readWasEventual)) {
+          // Events arrived during the read that it did not include yet, or an eventually
+          // consistent read lagged behind a seq we know exists: read again, strongly.
+          again = true;
         }
       }
       catchUpAttempt = 0;
@@ -279,7 +303,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
   }
 
   function connect() {
-    if (!started || !online || blocked || connection) return;
+    if (!started || !online || !visible || blocked || connection) return;
     subscribed = false;
     const id = ++connectionId;
     const isCurrent = () => id === connectionId;
@@ -326,7 +350,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
     if (!started) return;
     if (!online) return setState({ status: 'offline' });
     setState({ status: 'reconnecting' });
-    if (blocked || reconnectTimer !== null) return;
+    if (blocked || !visible || reconnectTimer !== null) return;
     reconnectTimer = setTimer(
       () => {
         reconnectTimer = null;
@@ -334,6 +358,15 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
       },
       backoffDelay(attempt++, random),
     );
+  }
+
+  /** Closes the connection and cancels every timer: nothing more is sent until restarted. */
+  function quiesce() {
+    disconnect();
+    if (catchUpRetry !== null) clearTimer(catchUpRetry);
+    catchUpRetry = null;
+    if (resetRetry !== null) clearTimer(resetRetry);
+    resetRetry = null;
   }
 
   return {
@@ -346,13 +379,7 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
     },
     stop() {
       started = false;
-      disconnect();
-      if (catchUpRetry !== null) clearTimer(catchUpRetry);
-      catchUpRetry = null;
-      if (resetRetry !== null) clearTimer(resetRetry);
-      resetRetry = null;
-      if (verifyTimer !== null) clearTimer(verifyTimer);
-      verifyTimer = null;
+      quiesce();
     },
     getState: () => state,
     subscribe(listener) {
@@ -404,6 +431,21 @@ export function createShiftSync(opts: SyncOptions): ShiftSync {
         attempt = 0;
         connect();
       }
+    },
+    setVisible(next) {
+      if (next === visible) return;
+      visible = next;
+      if (!started) return;
+      if (!visible) {
+        quiesce();
+        // Never "Live" while paused: the page shows Connecting when it comes back, until subscribed.
+        if (online) setState({ status: 'connecting' });
+        return;
+      }
+      if (!online) return setState({ status: 'offline' });
+      attempt = 0;
+      setState({ status: blocked ? 'reconnecting' : 'connecting' });
+      connect(); // subscribe first; onSubscribed then catches up
     },
   };
 }

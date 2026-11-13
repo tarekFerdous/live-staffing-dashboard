@@ -9,10 +9,12 @@ import {
   type EventsPage,
   type Snapshot,
 } from '@staffing/domain';
-import { z } from 'zod';
+import * as z from 'zod/mini';
 
 /** The one seeded shift this app shows. */
 export const SHIFT_ID: string = import.meta.env.VITE_SHIFT_ID ?? 'harbourfront-gala';
+
+export const THROTTLED_MESSAGE = 'Too many requests, try again';
 
 export class ApiError extends Error {
   constructor(
@@ -26,7 +28,7 @@ export class ApiError extends Error {
 
 async function request<T>(
   url: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodMiniType<T, unknown>,
   init: RequestInit = {},
 ): Promise<T> {
   let res: Response;
@@ -37,6 +39,10 @@ async function request<T>(
     throw new ApiError("Can't reach the server. Check your connection and try again.", null, 'NETWORK');
   }
   const body: unknown = await res.json().catch(() => null);
+  // API Gateway answers a throttled request itself, with its own body: one clear, temporary message.
+  if (res.status === 429) throw new ApiError(THROTTLED_MESSAGE, 429, 'THROTTLED');
+  if (res.status === 413)
+    throw new ApiError("This request isn't valid. Please try again.", 413, 'INVALID_REQUEST');
   if (!res.ok) {
     const parsed = ApiErrorSchema.safeParse(body);
     throw parsed.success
@@ -57,12 +63,26 @@ export function fetchSnapshot(shiftId: string, signal?: AbortSignal): Promise<Sn
   return request(`/api/shifts/${encodeURIComponent(shiftId)}`, SnapshotSchema, { signal });
 }
 
-/** Committed changes after `afterSeq`, oldest first (one page; `hasMore` means load the snapshot). */
-export function fetchEvents(shiftId: string, afterSeq: number): Promise<EventsPage> {
-  return request(`/api/shifts/${encodeURIComponent(shiftId)}/events?after=${afterSeq}`, EventsPageSchema);
+/**
+ * Committed changes after `afterSeq`, oldest first (one page; `hasMore` means load the snapshot).
+ * `eventual` lets the server read eventually consistently: for routine periodic checks only.
+ */
+export function fetchEvents(
+  shiftId: string,
+  afterSeq: number,
+  { eventual = false }: { eventual?: boolean } = {},
+): Promise<EventsPage> {
+  const read = eventual ? '&read=eventual' : '';
+  return request(
+    `/api/shifts/${encodeURIComponent(shiftId)}/events?after=${afterSeq}${read}`,
+    EventsPageSchema,
+  );
 }
 
-const ActionResponseSchema = z.object({ worker: WorkerSchema, seq: z.number().int().positive().optional() });
+const ActionResponseSchema = z.object({
+  worker: WorkerSchema,
+  seq: z.optional(z.number().check(z.int(), z.positive())),
+});
 export type ActionResponse = z.infer<typeof ActionResponseSchema>;
 
 /**

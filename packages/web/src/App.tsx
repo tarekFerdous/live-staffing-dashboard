@@ -1,16 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
 import { LiveIcon } from './components/icons';
 import { GUTTER, LivePausedNotice, LiveStatusBar } from './components/LiveStatus';
-import { ResetDemo } from './components/ResetDemo';
+import { lazy, Suspense } from 'react';
+import { PageLoader } from './components/PageLoader';
 import { ThemeToggle } from './components/ThemeToggle';
 import { ToastProvider } from './components/Toast';
 import { LiveProvider } from './lib/live';
 import type { Transport } from './lib/sync/shiftSync';
-import { ManagerPage } from './pages/ManagerPage';
-import { WorkerPage } from './pages/WorkerPage';
 
-export const ROUTER_FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
+// Each page is its own chunk: the worker page never downloads the manager's chart and rail.
+const ManagerPage = lazy(() => import('./pages/ManagerPage').then((m) => ({ default: m.ManagerPage })));
+const WorkerPage = lazy(() => import('./pages/WorkerPage').then((m) => ({ default: m.WorkerPage })));
+// The demo's reset and outage controls are the manager's, so they load with the manager page.
+const ResetDemo = lazy(() => import('./components/ResetDemo').then((m) => ({ default: m.ResetDemo })));
 
 export function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 5_000 } } });
@@ -51,14 +54,21 @@ function Layout() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:ml-auto">
             <LiveStatusBar />
             {/* Demo controls sit together; resetting is the manager's. */}
-            {onManager && <ResetDemo />}
+            {onManager && (
+              <Suspense fallback={null}>
+                <ResetDemo />
+              </Suspense>
+            )}
             <ThemeToggle />
           </div>
         </div>
         <LivePausedNotice />
       </header>
       <main id="main" tabIndex={-1} className={`py-6 focus:outline-none ${GUTTER}`}>
-        <Outlet />
+        {/* Keyed by page so a failed chunk on one page doesn't stick when switching to the other. */}
+        <PageLoader key={onManager ? 'manager' : 'worker'}>
+          <Outlet />
+        </PageLoader>
       </main>
     </div>
   );

@@ -78,7 +78,13 @@ async function expectWorkerPhoto(page: Page, photo: Locator, size: number) {
   expect(Math.abs(b.width - size)).toBeLessThanOrEqual(1);
   expect(Math.abs(b.height - size)).toBeLessThanOrEqual(1);
   expect(await photo.evaluate((img) => getComputedStyle(img).borderRadius)).not.toBe('0px');
-  const res = await page.request.get(new URL((await photo.getAttribute('src'))!, page.url()).href);
+  const src = (await photo.getAttribute('src'))!;
+  // A production build inlines files under 4 KB (these photos) as data: URIs; dev serves them as files.
+  if (src.startsWith('data:')) {
+    expect(src).toMatch(/^data:image\/webp[;,]/);
+    return;
+  }
+  const res = await page.request.get(new URL(src, page.url()).href);
   expect(res.status()).toBe(200);
   expect(res.headers()['content-type']).toContain('image/webp');
 }

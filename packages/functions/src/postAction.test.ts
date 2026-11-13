@@ -88,16 +88,19 @@ describe('#15 invite', () => {
   it.each([
     ['accepted', ['invite', 'accept']],
     ['cancelled', ['invite', 'accept', 'cancel']],
-  ] as const)('refuses to invite a %s worker with 409, the current row and a reason', async (state, steps) => {
-    const { store, act } = await setup();
-    for (const s of steps) expect((await act('sofia', s)).statusCode).toBe(200);
-    const res = await act('sofia', 'invite');
-    expect(res.statusCode).toBe(409);
-    expect(res.json.code).toBe('INVALID_TRANSITION');
-    expect(res.json.message).toMatch(/Can't invite Sofia Rossi/);
-    expect((res.json.current as Worker).participation).toBe(state);
-    await expectLog(store, [...steps]);
-  });
+  ] as const)(
+    'refuses to invite a %s worker with 409, the current row and a reason',
+    async (state, steps) => {
+      const { store, act } = await setup();
+      for (const s of steps) expect((await act('sofia', s)).statusCode).toBe(200);
+      const res = await act('sofia', 'invite');
+      expect(res.statusCode).toBe(409);
+      expect(res.json.code).toBe('INVALID_TRANSITION');
+      expect(res.json.message).toMatch(/Can't invite Sofia Rossi/);
+      expect((res.json.current as Worker).participation).toBe(state);
+      await expectLog(store, [...steps]);
+    },
+  );
 
   it.each([
     ['malformed JSON', { raw: '{nope' }],
@@ -123,6 +126,61 @@ describe('#15 invite', () => {
     const res = await act('ghost', 'invite');
     expect(res.statusCode).toBe(404);
     expect(res.json).toEqual({ code: 'WORKER_NOT_FOUND', message: 'Worker "ghost" is not on this shift.' });
+  });
+});
+
+describe('#76 body size cap', () => {
+  /** The action endpoint over a store that records every call made to it. */
+  async function spied() {
+    const { client, doc, tableName, idempotencyTableName } = await dynamo.newTable('size');
+    const real = createShiftStore(doc, tableName);
+    await real.resetShift(SEED);
+    const calls: string[] = [];
+    const store = new Proxy(real, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver) as unknown;
+        if (typeof value !== 'function') return value;
+        return (...args: unknown[]) => {
+          calls.push(String(prop));
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const handler = makeActionHandler({ store, idempotency: { client, tableName: idempotencyTableName } });
+    const post = async (body: string, isBase64Encoded = false) => {
+      const res = await handler({
+        rawPath: `/api/shifts/${SHIFT}/workers/amara/actions`,
+        headers: { 'idempotency-key': randomUUID() },
+        pathParameters: { shiftId: SHIFT, workerId: 'amara' },
+        body: isBase64Encoded ? Buffer.from(body).toString('base64') : body,
+        isBase64Encoded,
+      } as unknown as HttpEvent);
+      return { ...res, json: JSON.parse(res.body) as Record<string, unknown> };
+    };
+    return { calls, post };
+  }
+  /** A valid invite body padded with trailing spaces to exactly `bytes` bytes. */
+  const padded = (bytes: number) => JSON.stringify({ action: 'invite' }).padEnd(bytes, ' ');
+
+  it('refuses a 1,025-byte body with 413 in the usual error shape, without touching the store', async () => {
+    const { calls, post } = await spied();
+    for (const encoded of [false, true]) {
+      const res = await post(padded(1025), encoded);
+      expect(res.statusCode).toBe(413);
+      expect(Object.keys(res.json).sort()).toEqual(['code', 'message']);
+      expect(res.json.code).toBe('PAYLOAD_TOO_LARGE');
+      expect(res.headers?.['content-type']).toBe('application/json');
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('still accepts a normal action body, and one of exactly 1 KB', async () => {
+    const { calls, post } = await spied();
+    const res = await post(padded(1024));
+    expect(res.statusCode).toBe(200);
+    expect(worker(res).participation).toBe('invited');
+    expect(calls).toContain('applyAction');
+    expect((await post(JSON.stringify({ action: 'decline' }), true)).statusCode).toBe(200);
   });
 });
 
@@ -189,10 +247,18 @@ describe('#16 accept, decline, cancel and capacity', () => {
   it('acceptedCount equals the derived filled count after every step of a scripted sequence', async () => {
     const { store, act } = await setup({ ...SEED, shift: { ...SEED.shift, required: 2 } });
     const script: [string, Action][] = [
-      ['amara', 'invite'], ['liam', 'invite'], ['sofia', 'invite'],
-      ['amara', 'accept'], ['liam', 'accept'], ['sofia', 'accept'], // third is SHIFT_FULL
-      ['liam', 'cancel'], ['sofia', 'accept'], ['liam', 'accept'], // liam now full
-      ['amara', 'cancel'], ['liam', 'accept'], ['sofia', 'decline'], // decline refused: Accepted
+      ['amara', 'invite'],
+      ['liam', 'invite'],
+      ['sofia', 'invite'],
+      ['amara', 'accept'],
+      ['liam', 'accept'],
+      ['sofia', 'accept'], // third is SHIFT_FULL
+      ['liam', 'cancel'],
+      ['sofia', 'accept'],
+      ['liam', 'accept'], // liam now full
+      ['amara', 'cancel'],
+      ['liam', 'accept'],
+      ['sofia', 'decline'], // decline refused: Accepted
     ];
     for (const [w, a] of script) {
       await act(w, a);
@@ -203,7 +269,12 @@ describe('#16 accept, decline, cancel and capacity', () => {
       expect(remaining).toBe(snap.shift.required - filled);
     }
     const snap = (await store.getSnapshot(SHIFT))!;
-    expect(snap.workers.filter((w) => w.participation === 'accepted').map((w) => w.id).sort()).toEqual(['liam', 'sofia']);
+    expect(
+      snap.workers
+        .filter((w) => w.participation === 'accepted')
+        .map((w) => w.id)
+        .sort(),
+    ).toEqual(['liam', 'sofia']);
   });
 });
 
@@ -287,7 +358,11 @@ describe('#18 check-in and check-out', () => {
     await accepted(act);
     const inRes = await act('amara', 'check_in');
     expect(inRes.statusCode).toBe(200);
-    expect(worker(inRes)).toMatchObject({ participation: 'accepted', attendance: 'checked_in', checkedOutAt: null });
+    expect(worker(inRes)).toMatchObject({
+      participation: 'accepted',
+      attendance: 'checked_in',
+      checkedOutAt: null,
+    });
     expect(worker(inRes).checkedInAt).toMatch(/^\d{4}-\d\d-\d\dT/);
 
     const outRes = await act('amara', 'check_out');
@@ -297,13 +372,19 @@ describe('#18 check-in and check-out', () => {
       attendance: 'checked_out',
       checkedInAt: worker(inRes).checkedInAt,
     });
-    expect(Date.parse(worker(outRes).checkedOutAt!)).toBeGreaterThanOrEqual(Date.parse(worker(inRes).checkedInAt!));
+    expect(Date.parse(worker(outRes).checkedOutAt!)).toBeGreaterThanOrEqual(
+      Date.parse(worker(inRes).checkedInAt!),
+    );
 
     const { events, snap } = await expectLog(store, ['invite', 'accept', 'check_in', 'check_out']);
     expect(events[2]).toMatchObject({ actor: 'worker', row: worker(inRes) });
     expect(events[3]).toMatchObject({ actor: 'worker', row: worker(outRes) });
     expect(snap.shift.acceptedCount).toBe(1);
-    expect(deriveCounts(snap.workers, snap.shift.required)).toMatchObject({ filled: 1, checkedIn: 0, checkedOut: 1 });
+    expect(deriveCounts(snap.workers, snap.shift.required)).toMatchObject({
+      filled: 1,
+      checkedIn: 0,
+      checkedOut: 1,
+    });
   });
 
   it('a double check-in returns 200 with the original checkedInAt and writes no event', async () => {
@@ -393,7 +474,13 @@ describe('#18 check-in and check-out', () => {
     expect(full.json.code).toBe('SHIFT_FULL');
     const snap = (await store.getSnapshot(SHIFT))!;
     expect(snap.shift.acceptedCount).toBe(2);
-    expect(deriveCounts(snap.workers, 2)).toEqual({ required: 2, filled: 2, remaining: 0, checkedIn: 1, checkedOut: 1 });
+    expect(deriveCounts(snap.workers, 2)).toEqual({
+      required: 2,
+      filled: 2,
+      remaining: 0,
+      checkedIn: 1,
+      checkedOut: 1,
+    });
   });
 });
 
@@ -405,16 +492,25 @@ describe('profile details survive every action', () => {
       return { role, phone, email, address };
     };
     const steps: [string, Action][] = [
-      ['amara', 'invite'], ['amara', 'accept'], ['amara', 'check_in'], ['amara', 'check_out'],
-      ['liam', 'invite'], ['liam', 'accept'], ['liam', 'cancel'],
-      ['sofia', 'invite'], ['sofia', 'decline'],
+      ['amara', 'invite'],
+      ['amara', 'accept'],
+      ['amara', 'check_in'],
+      ['amara', 'check_out'],
+      ['liam', 'invite'],
+      ['liam', 'accept'],
+      ['liam', 'cancel'],
+      ['sofia', 'invite'],
+      ['sofia', 'decline'],
     ];
     for (const [id, action] of steps) {
       const res = await act(id, action);
       expect(res.statusCode, `${id} ${action}`).toBe(200);
       expect(worker(res)).toMatchObject(profile(id));
     }
-    const { events, snap } = await expectLog(store, steps.map(([, a]) => a));
+    const { events, snap } = await expectLog(
+      store,
+      steps.map(([, a]) => a),
+    );
     for (const e of events) expect(e.row).toMatchObject(profile(e.workerId));
     for (const w of snap.workers) expect(w).toMatchObject(profile(w.id));
   });

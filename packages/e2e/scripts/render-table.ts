@@ -16,7 +16,8 @@ type Result = {
   conditions: string;
   updateDelayMs: Summary;
   recoveryMs: Summary;
-  coldStart: { ms: number; note: string } | null;
+  /** `answeredMs` and `snapshotMs` exist from #94 on. */
+  coldStart: { ms: number; answeredMs?: number; snapshotMs?: number; note: string } | null;
   perHopMs: Record<string, Stat> | null;
   throttling: { readThrottleEvents: number; writeThrottleEvents: number } | null;
 };
@@ -54,9 +55,13 @@ const lines: string[] = [
   row('Recovery p95', (r) => ms(r.recoveryMs.p95)),
   row('Recovery max', (r) => ms(r.recoveryMs.max)),
   row('Recovery runs', (r) => String(r.recoveryMs.n)),
-  row('Cold start (first action, not in the percentiles)', (r) =>
+  row('Cold first action: click → manager sees it (not in the percentiles)', (r) =>
     r.coldStart ? ms(r.coldStart.ms) : 'n/a (no cold starts locally)',
   ),
+  row('Cold first action: click → worker gets the answer', (r) =>
+    r.coldStart ? ms(r.coldStart.answeredMs) : 'n/a',
+  ),
+  row('Cold first snapshot (GET shift)', (r) => (r.coldStart ? ms(r.coldStart.snapshotMs) : 'n/a')),
   row('DynamoDB throttle events during the run', (r) =>
     r.throttling ? String(r.throttling.readThrottleEvents + r.throttling.writeThrottleEvents) : 'n/a',
   ),

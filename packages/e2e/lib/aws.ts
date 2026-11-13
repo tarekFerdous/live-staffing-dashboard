@@ -7,7 +7,9 @@ import {
 import { CloudWatchClient, GetMetricStatisticsCommand, type Dimension } from '@aws-sdk/client-cloudwatch';
 import {
   GetFunctionConfigurationCommand,
+  InvokeCommand,
   LambdaClient,
+  LogType,
   UpdateFunctionConfigurationCommand,
   waitUntilFunctionUpdatedV2,
 } from '@aws-sdk/client-lambda';
@@ -57,6 +59,36 @@ export async function forceColdStarts(logicalPrefixes: string[]): Promise<void> 
     );
     await waitUntilFunctionUpdatedV2({ client: lambda, maxWaitTime: 120 }, { FunctionName });
   }
+}
+
+/**
+ * Invokes a stack function directly and reads its REPORT line from the returned log tail.
+ * `initMs` is null when the invocation was warm (REPORT has no Init Duration then).
+ */
+export async function invokeWithLog(
+  logicalPrefix: string,
+  payload: unknown,
+): Promise<{ initMs: number | null; durationMs: number; maxMemoryMb: number }> {
+  const FunctionName = await physicalId('AWS::Lambda::Function', logicalPrefix);
+  const res = await lambda.send(
+    new InvokeCommand({
+      FunctionName,
+      LogType: LogType.Tail,
+      Payload: new TextEncoder().encode(JSON.stringify(payload)),
+    }),
+  );
+  if (res.FunctionError) throw new Error(`${logicalPrefix} failed: ${new TextDecoder().decode(res.Payload)}`);
+  const log = Buffer.from(res.LogResult ?? '', 'base64').toString('utf8');
+  const report = log.split('\n').find((l) => l.startsWith('REPORT')) ?? '';
+  const num = (label: string) => {
+    const m = report.match(new RegExp(`${label}: ([\\d.]+)`));
+    return m ? Number(m[1]) : null;
+  };
+  return {
+    initMs: num('Init Duration'),
+    durationMs: num('Duration') ?? NaN,
+    maxMemoryMb: num('Max Memory Used') ?? 0,
+  };
 }
 
 export type Stat = { count: number; p50: number; p95: number; max: number };

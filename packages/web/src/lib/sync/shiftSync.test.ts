@@ -2,6 +2,7 @@ import {
   applyAction,
   MAX_EVENTS_PAGE,
   type Action,
+  type EventsPage,
   type ShiftEventMessage,
   type Snapshot,
   type Worker,
@@ -58,15 +59,23 @@ function fakeServer() {
   let snap = initialSnapshot();
   const events: ShiftEventMessage[] = [];
   const calls: string[] = [];
+  /** Every events read and whether it asked for an eventually consistent read (#92). */
+  const reads: { after: number; eventual: boolean }[] = [];
   let failNext = 0;
+  /** How many of the newest events an eventually consistent read doesn't see yet. */
+  let lag = 0;
   return {
     calls,
+    reads,
     events,
     get snapshot() {
       return snap;
     },
     failNextFetches(n: number) {
       failNext = n;
+    },
+    lagEventualReadsBy(n: number) {
+      lag = n;
     },
     act(workerId: string, action: Action): ShiftEventMessage {
       const current = snap.workers.find((w) => w.id === workerId)!;
@@ -95,13 +104,15 @@ function fakeServer() {
       return { kind: 'reset' as const, epoch: snap.epoch };
     },
     api: {
-      async fetchEvents(_shiftId: string, after: number) {
+      async fetchEvents(_shiftId: string, after: number, opts?: { eventual?: boolean }) {
         calls.push(`events:${after}`);
+        reads.push({ after, eventual: opts?.eventual === true });
         if (failNext > 0) {
           failNext--;
           throw new Error('network');
         }
-        const rest = events.filter((e) => e.seq > after);
+        const visible = opts?.eventual && lag > 0 ? events.slice(0, -lag) : events;
+        const rest = visible.filter((e) => e.seq > after);
         return {
           events: rest.slice(0, MAX_EVENTS_PAGE),
           hasMore: rest.length > MAX_EVENTS_PAGE,
@@ -128,9 +139,9 @@ function setup(extra: Partial<SyncOptions> = {}) {
     shiftId: SHIFT,
     transport: t.transport,
     api: {
-      fetchEvents: async (id, after) => {
+      fetchEvents: async (id, after, readOpts) => {
         t.log.push(`fetch:${after}`);
-        return server.api.fetchEvents(id, after);
+        return server.api.fetchEvents(id, after, readOpts);
       },
       fetchSnapshot: server.api.fetchSnapshot,
     },
@@ -179,6 +190,7 @@ async function live(extra: Partial<SyncOptions> = {}) {
   s.t.last.subscribed();
   await flush();
   s.server.calls.length = 0;
+  s.server.reads.length = 0;
   return s;
 }
 
@@ -477,6 +489,172 @@ describe('shift sync', () => {
     // Not while disconnected.
     s.sync.setBlocked(true);
     expect(s.pendingTimers()).toEqual([]);
+  });
+
+  describe('#93 hidden tabs', () => {
+    it('a hidden tab closes its subscription, stops checking and makes no requests', async () => {
+      const s = await live();
+      const conn = s.t.last;
+      s.sync.setVisible(false);
+      expect(conn.closed).toBe(true);
+      expect(s.pendingTimers()).toEqual([]);
+
+      // Changes while hidden: the server publishes, nobody listens, nothing is read.
+      conn.send(s.server.act('amara', 'invite'));
+      s.server.act('liam', 'invite');
+      await s.runTimers();
+      expect(s.server.calls).toEqual([]);
+      expect(s.t.connections).toHaveLength(1);
+      expect(s.latest()).toBeUndefined();
+    });
+
+    it('cancels a pending catch-up retry, so a failed read is not retried while hidden', async () => {
+      const s = await live();
+      s.server.failNextFetches(1);
+      await s.runTimers(); // the periodic check fails and schedules a retry
+      expect(s.pendingOther()).toHaveLength(1);
+      s.sync.setVisible(false);
+      expect(s.pendingTimers()).toEqual([]);
+    });
+
+    it('visible again: subscribes first, then catches up on what it missed', async () => {
+      const s = await live();
+      s.sync.setVisible(false);
+      s.server.act('amara', 'invite');
+      s.server.act('amara', 'accept');
+      s.t.log.length = 0;
+
+      s.sync.setVisible(true);
+      await flush();
+      expect(s.server.calls).toEqual([]); // nothing read before the subscription is confirmed
+      s.t.last.subscribed();
+      await flush();
+      expect(s.t.log).toEqual(['connect', 'subscribed', 'fetch:0']);
+      expect(s.latest()!.seq).toBe(2);
+    });
+
+    it('never shows Live while paused or before the new subscription is confirmed', async () => {
+      const s = await live();
+      const seen: string[] = [];
+      s.sync.subscribe(() => seen.push(s.sync.getState().status));
+      expect(s.sync.getState().status).toBe('live');
+
+      s.sync.setVisible(false);
+      expect(s.sync.getState().status).toBe('connecting');
+      s.sync.setVisible(true);
+      expect(s.sync.getState().status).toBe('connecting');
+      s.t.last.subscribed();
+      expect(seen).toEqual(['connecting', 'live']);
+    });
+
+    it('stays Offline when it comes back without a network, and connects once online', async () => {
+      const s = await live();
+      s.sync.setVisible(false);
+      s.sync.setOnline(false);
+      s.sync.setVisible(true);
+      expect(s.sync.getState().status).toBe('offline');
+      expect(s.t.connections).toHaveLength(1);
+      s.sync.setOnline(true);
+      expect(s.t.connections).toHaveLength(2);
+    });
+
+    it('does not connect while hidden when the network comes back or an outage ends', async () => {
+      const s = await live();
+      s.sync.setVisible(false);
+      s.sync.setOnline(false);
+      s.sync.setOnline(true);
+      s.sync.setBlocked(true);
+      s.sync.setBlocked(false);
+      await s.runTimers();
+      expect(s.t.connections).toHaveLength(1);
+      expect(s.server.calls).toEqual([]);
+    });
+  });
+
+  describe('#92 read consistency', () => {
+    it('the periodic check asks for an eventual read; subscribe, gap and post-burst reads stay strong', async () => {
+      const s = setup();
+      s.sync.start();
+      s.sync.adoptSnapshot(initialSnapshot());
+      s.t.last.subscribed();
+      await flush();
+      expect(s.server.reads).toEqual([{ after: 0, eventual: false }]); // catch-up after subscribing
+
+      await s.runTimers(); // the 6 s periodic check
+      expect(s.server.reads.at(-1)).toEqual({ after: 0, eventual: true });
+
+      s.server.act('amara', 'invite'); // lost
+      s.t.last.send(s.server.act('liam', 'invite')); // a gap
+      await flush();
+      expect(s.server.reads.at(-1)).toEqual({ after: 0, eventual: false });
+      expect(s.latest()!.seq).toBe(2);
+
+      s.t.last.send(s.server.act('sofia', 'invite'));
+      s.server.act('amara', 'accept'); // the burst's lost last event
+      const reads = s.server.reads.length;
+      const postBurst = s.pendingTimers().filter((x) => x.ms === VERIFY_AFTER_MS);
+      expect(postBurst).toHaveLength(1);
+      await s.runTimers();
+      expect(s.server.reads.slice(reads)).toEqual([{ after: 3, eventual: false }]);
+      expect(s.latest()!.seq).toBe(4);
+    });
+
+    it('a lagging eventual read never rolls the page back', async () => {
+      const s = await live();
+      s.t.last.send(s.server.act('amara', 'invite'));
+      s.t.last.send(s.server.act('amara', 'accept'));
+      await s.runTimers(); // the strong post-burst check: nothing missed
+      const before = s.latest();
+      const published = s.published.length;
+
+      s.server.lagEventualReadsBy(2); // the eventual read doesn't see seq 1 and 2 yet
+      await s.runTimers(); // periodic, eventual
+      expect(s.server.reads.at(-1)).toEqual({ after: 2, eventual: true });
+      expect(s.latest()).toBe(before);
+      expect(s.published).toHaveLength(published);
+    });
+
+    it('ignores a stale page carrying events at or below the applied seq, or an older epoch', async () => {
+      const stalePages: EventsPage[] = [];
+      const s = await live({
+        api: {
+          fetchEvents: async () => stalePages.shift() ?? { events: [], hasMore: false, epoch: 1 },
+          fetchSnapshot: async () => initialSnapshot(),
+        },
+      });
+      const e1 = s.server.act('amara', 'invite');
+      const e2 = s.server.act('amara', 'accept');
+      s.t.last.send(e1);
+      s.t.last.send(e2);
+      await flush();
+      const at2 = s.latest();
+
+      stalePages.push({ events: [e1], hasMore: false, epoch: 1 }, { events: [], hasMore: false, epoch: 0 });
+      await s.runTimers();
+      await s.runTimers();
+      expect(stalePages).toEqual([]); // both stale pages were read
+      expect(s.latest()).toBe(at2);
+    });
+
+    it('re-reads strongly when an eventual read lags behind a seq the page already knows exists', async () => {
+      const s = await live();
+      s.server.lagEventualReadsBy(2);
+      s.server.act('amara', 'invite'); // lost
+      const e2 = s.server.act('liam', 'invite');
+
+      const periodic = s.pendingTimers().find((x) => x.ms === VERIFY_EVERY_MS)!;
+      periodic.cleared = true;
+      periodic.fn(); // the eventual read is in flight...
+      s.t.last.send(e2); // ...when seq 2 arrives live: a gap, but a catch-up is already running
+      await flush();
+      await flush();
+
+      expect(s.server.reads).toEqual([
+        { after: 0, eventual: true }, // lagging: sees neither event
+        { after: 0, eventual: false }, // so read again, strongly
+      ]);
+      expect(s.latest()!.seq).toBe(2);
+    });
   });
 
   describe('resets (epoch)', () => {

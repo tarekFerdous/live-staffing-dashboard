@@ -1,7 +1,8 @@
+import './lib/zodConfig'; // first: no `new Function` probe under the CSP
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import { App, createQueryClient, ROUTER_FUTURE } from './App';
+import { BrowserRouter } from 'react-router';
+import { App, createQueryClient } from './App';
 import { appSyncTransport, loadRealtimeConfig } from './lib/sync/appsyncTransport';
 // Geist, self-hosted from the bundle (no request to Google Fonts).
 import '@fontsource-variable/geist';
@@ -13,7 +14,7 @@ const realtime = await loadRealtimeConfig();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter future={ROUTER_FUTURE}>
+    <BrowserRouter>
       <App queryClient={createQueryClient()} transport={realtime ? appSyncTransport(realtime) : null} />
     </BrowserRouter>
   </StrictMode>,

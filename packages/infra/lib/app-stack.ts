@@ -19,6 +19,27 @@ const REPO_ROOT = join(import.meta.dirname, '../../..');
 const LAMBDA_DIR = join(REPO_ROOT, 'packages/functions/src/lambda');
 const LOG_RETENTION = logs.RetentionDays.ONE_WEEK;
 
+/**
+ * #77 API Gateway throttles (requests per second, burst). The default covers page loads and the
+ * 6 s safety-net reads with plenty of room; writes are capped harder, and reset hardest.
+ */
+export const THROTTLE = {
+  default: { rateLimit: 50, burstLimit: 100 },
+  routes: {
+    'POST /api/shifts/{shiftId}/workers/{workerId}/actions': { rateLimit: 10, burstLimit: 20 },
+    'POST /api/demo/reset': { rateLimit: 1, burstLimit: 2 },
+  },
+} as const;
+
+/**
+ * #77 Reserved concurrency per function, an upper bound on Lambda spend under a flood. It needs an
+ * account concurrency limit of 1,000 (see the README's "Rate limits" section).
+ */
+export const RESERVED_CONCURRENCY = { enabled: false, postAction: 5, others: 3 } as const;
+
+/** #94 Memory for every function, chosen from cold-start measurements (README "Cold starts"). */
+export const FUNCTION_MEMORY_MB = 512;
+
 export type AppStackProps = StackProps & {
   /** Built frontend (`packages/web/dist`). */
   siteAssetPath: string;
@@ -93,7 +114,7 @@ export class AppStack extends Stack {
       methods: [apigw.HttpMethod.GET],
       integration: new HttpLambdaIntegration('GetEventsIntegration', getEvents),
     });
-    api.addRoutes({
+    const actionRoutes = api.addRoutes({
       path: '/api/shifts/{shiftId}/workers/{workerId}/actions',
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration('PostActionIntegration', postAction),
@@ -102,11 +123,28 @@ export class AppStack extends Stack {
     // Demo reset: puts the seed back and bumps the epoch (no auth: a demo affordance only).
     const demoReset = this.fn('DemoReset', 'demoReset.ts', { TABLE_NAME: table.tableName });
     table.grantReadWriteData(demoReset);
-    api.addRoutes({
+    const resetRoutes = api.addRoutes({
       path: '/api/demo/reset',
       methods: [apigw.HttpMethod.POST],
       integration: new HttpLambdaIntegration('DemoResetIntegration', demoReset),
     });
+
+    // #77 Stage throttles: the default for every route, tighter overrides for writes and reset.
+    // Over the limit, API Gateway answers 429 itself, before any Lambda or table is touched.
+    const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
+    stage.defaultRouteSettings = {
+      throttlingRateLimit: THROTTLE.default.rateLimit,
+      throttlingBurstLimit: THROTTLE.default.burstLimit,
+    };
+    // RouteSettings is a raw JSON map in CDK, passed through as is: CloudFormation's PascalCase keys.
+    stage.routeSettings = Object.fromEntries(
+      Object.entries(THROTTLE.routes).map(([key, t]) => [
+        key,
+        { ThrottlingRateLimit: t.rateLimit, ThrottlingBurstLimit: t.burstLimit },
+      ]),
+    );
+    // Route settings name routes by key, so the routes must exist before the stage refers to them.
+    for (const route of [...actionRoutes, ...resetRoutes]) api.defaultStage!.node.addDependency(route);
 
     // ── Live updates: table stream → publisher → AppSync Events → browsers ──
     // Browsers hold a subscribe-only API key (a demo limit; Cognito would replace it).
@@ -195,7 +233,12 @@ export class AppStack extends Stack {
       description: 'Built web app (packages/web/dist), mounted at /opt',
       removalPolicy: RemovalPolicy.DESTROY,
     });
-    const site = this.fn('Site', 'site.ts', { SITE_DIR: '/opt' });
+    // The CSP's connect-src names this stage's own AppSync hosts, so each stage's policy is exact.
+    const site = this.fn('Site', 'site.ts', {
+      SITE_DIR: '/opt',
+      EVENTS_HTTP_HOST: eventApi.httpDns,
+      EVENTS_REALTIME_HOST: eventApi.realtimeDns,
+    });
     site.addLayers(siteFiles);
     api.addRoutes({
       path: '/{proxy+}',
@@ -231,18 +274,26 @@ export class AppStack extends Stack {
       depsLockFilePath: join(REPO_ROOT, 'pnpm-lock.yaml'),
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
-      memorySize: 256,
+      // #94: Lambda's CPU scales with memory. At 512 MB the first DynamoDB call after a cold start
+      // (SDK setup and signing, CPU-bound) takes about half as long as at 256 MB; see the README.
+      memorySize: FUNCTION_MEMORY_MB,
       timeout: Duration.seconds(10),
       environment,
       logGroup: this.logGroup(`${id}Logs`),
+      reservedConcurrentExecutions: RESERVED_CONCURRENCY.enabled
+        ? id === 'PostAction'
+          ? RESERVED_CONCURRENCY.postAction
+          : RESERVED_CONCURRENCY.others
+        : undefined,
       bundling: {
         format: OutputFormat.ESM,
         target: 'node22',
         minify: true,
         sourceMap: true,
         mainFields: ['module', 'main'],
-        // The Node 22 runtime ships AWS SDK v3.
-        externalModules: ['@aws-sdk/*'],
+        // #94: the AWS SDK is bundled (ES modules, tree-shaken, minified) rather than loaded from the
+        // runtime's copy, which loads whole CommonJS clients and is slower to start.
+        externalModules: [],
         banner: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
       },
     });

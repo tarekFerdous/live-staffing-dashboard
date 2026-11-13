@@ -1,4 +1,8 @@
+import { registerEnglishMessages } from '@staffing/domain';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2, Context } from 'aws-lambda';
+
+// Every HTTP handler imports this module, so their logs get readable zod messages.
+registerEnglishMessages();
 
 export type HttpEvent = APIGatewayProxyEventV2;
 export type HttpResult = APIGatewayProxyStructuredResultV2 & { statusCode: number; body: string };
@@ -7,12 +11,17 @@ export type HttpHandler = (event: HttpEvent, context?: Context) => Promise<HttpR
 export function json(statusCode: number, body: unknown): HttpResult {
   return {
     statusCode,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+    },
     body: JSON.stringify(body),
   };
 }
 
-export const error = (statusCode: number, code: string, message: string) => json(statusCode, { code, message });
+export const error = (statusCode: number, code: string, message: string) =>
+  json(statusCode, { code, message });
 
 /** Turns unexpected exceptions into a 500 with a readable message instead of a bare Lambda error. */
 export function withErrors(handler: HttpHandler): HttpHandler {

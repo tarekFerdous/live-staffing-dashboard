@@ -2,15 +2,15 @@ import type { Snapshot, Worker } from '@staffing/domain';
 import { QueryClient } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
-import { App, ROUTER_FUTURE } from '../App';
+import { App } from '../App';
 import type { Transport } from '../lib/sync/shiftSync';
 
 export function renderApp(path: string, opts: { transport?: Transport } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[path]} future={ROUTER_FUTURE}>
+    <MemoryRouter initialEntries={[path]}>
       <App queryClient={queryClient} transport={opts.transport ?? null} />
     </MemoryRouter>,
   );

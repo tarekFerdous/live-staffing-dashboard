@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # #86: a monthly deploy pushes the AppSync subscribe key's 365-day expiry forward even when
+  # nothing changes, so it can never lapse; it also keeps the deploy path exercised.
+  schedule:
+    - cron: '17 6 1 * *' # 06:17 UTC on the 1st of each month
+  workflow_dispatch:
 
 # Default for every job: read the repo, nothing else. Only the deploy job asks for an OIDC token.
 permissions:
@@ -24,13 +29,20 @@ jobs:
       # Integration tests use this instead of starting their own container.
       DYNAMODB_ENDPOINT: http://localhost:8000
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # #83: a moved tag must not be able to inject code into a job that holds AWS credentials.
+      - name: Actions are pinned to commit SHAs
+        run: |
+          bad=$(grep -rnE '^\s*(-\s*)?uses:' .github/workflows \
+            | grep -vE 'uses:\s*[^@[:space:]]+@[0-9a-f]{40}(\s|$)' | grep -vE 'uses:\s*\./' || true)
+          if [ -n "$bad" ]; then echo "Pin these to a full 40-character commit SHA (with a # vX.Y.Z comment):"; echo "$bad"; exit 1; fi
+          echo "All actions are pinned."
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
@@ -39,9 +51,9 @@ jobs:
   local-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -57,7 +69,7 @@ jobs:
         run: pnpm e2e
       - name: Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
           path: |
@@ -73,7 +85,7 @@ jobs:
   deploy:
     needs: checks
     # Pull requests never reach this job, so they never get AWS credentials.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event_name)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,16 +94,16 @@ jobs:
       group: deploy-main
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
       - name: Assume the deploy role (OIDC, no stored keys)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ca-central-1
@@ -115,6 +127,31 @@ jobs:
           done
           cat body.json || true
           exit 1
+
+      # #75: the page and a JSON API response must carry the security headers.
+      - name: Security headers smoke test
+        run: |
+          SITE_URL=$(jq -r '.LiveStaffingApp.SiteUrl' packages/infra/cdk-outputs.json)
+          SHIFT_ID=$(jq -r '.LiveStaffingApp.ShiftId' packages/infra/cdk-outputs.json)
+          fail=0
+          check() { # url, header...
+            local url=$1; shift
+            local headers; headers=$(curl -s -D - -o /dev/null "$url" | tr -d '\r' | tr 'A-Z' 'a-z')
+            for h in "$@"; do
+              if echo "$headers" | grep -q "^$h:"; then echo "ok   $url $h"; else echo "MISSING $url $h"; fail=1; fi
+            done
+          }
+          check "$SITE_URL/manager" content-security-policy strict-transport-security referrer-policy \
+            permissions-policy x-content-type-options
+          check "$SITE_URL/api/shifts/$SHIFT_ID" x-content-type-options
+          curl -s -D - -o /dev/null "$SITE_URL/manager" | tr -d '\r' | grep -i '^content-security-policy:' \
+            | grep -q "frame-ancestors 'none'" || { echo "CSP lacks frame-ancestors 'none'"; fail=1; }
+          # #88: the main script arrives Brotli-encoded when the browser accepts it.
+          JS=$(curl -s "$SITE_URL/manager" | grep -o '/assets/index-[^"]*\.js' | head -1)
+          check_br=$(curl -s -D - -o /dev/null -H 'Accept-Encoding: br, gzip' "$SITE_URL$JS" | tr -d '\r' | tr 'A-Z' 'a-z')
+          echo "$check_br" | grep -q '^content-encoding: br' && echo "ok   $JS content-encoding: br" \
+            || { echo "MISSING $JS content-encoding: br"; fail=1; }
+          exit $fail
 
       # Subscribes with the browser transport and API key, performs one action through
       # CloudFront, and fails unless that change arrives on the subscription in time.

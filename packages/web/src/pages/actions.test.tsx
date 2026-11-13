@@ -105,6 +105,52 @@ describe('manager: invite', () => {
   });
 });
 
+describe('#77 throttled requests', () => {
+  /** What API Gateway itself sends when a route is over its limit (not our error shape). */
+  const throttled = () =>
+    new Response(JSON.stringify({ message: 'Too Many Requests' }), {
+      status: 429,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('the manager page shows "Too many requests, try again" and keeps the old status', async () => {
+    const api = fakeApi(makeSnapshot());
+    api.nextPost.push(throttled());
+    renderApp('/manager');
+    await userEvent.click(await screen.findByRole('button', { name: 'Invite Amara Okafor' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests, try again');
+    expect(trackerOf('Amara Okafor')).not.toHaveTextContent('Invited');
+    expect(api.posts()).toHaveLength(1); // not retried automatically
+  });
+
+  it('the worker page shows the same message', async () => {
+    const api = fakeApi(
+      makeSnapshot([worker('amara', 'Amara Okafor', { participation: 'invited', version: 1 })]),
+    );
+    api.nextPost.push(throttled());
+    renderApp('/worker');
+    await pickWorker('Amara Okafor');
+    await userEvent.click(screen.getByRole('button', { name: 'Accept Amara Okafor' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests, try again');
+    expect(screen.getByTestId('my-participation')).toHaveTextContent('Invited');
+    expect(api.posts()).toHaveLength(1);
+  });
+
+  it('#76 a 413 reads as an invalid request, not a server failure', async () => {
+    const api = fakeApi(makeSnapshot());
+    api.nextPost.push(
+      new Response(JSON.stringify({ code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.' }), {
+        status: 413,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderApp('/manager');
+    await userEvent.click(await screen.findByRole('button', { name: 'Invite Amara Okafor' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("This request isn't valid.");
+    expect(api.posts()).toHaveLength(1);
+  });
+});
+
 describe('worker: accept, decline, cancel', () => {
   it('shows only the buttons the transition table allows', async () => {
     fakeApi(

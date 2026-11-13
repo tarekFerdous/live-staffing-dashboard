@@ -1,7 +1,8 @@
-import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib';
+import { CfnOutput, CliCredentialsStackSynthesizer, Stack, type StackProps } from 'aws-cdk-lib';
 import { CfnBudget } from 'aws-cdk-lib/aws-budgets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
+import { CFN_EXEC_POLICY_NAME, cfnExecPolicyStatements } from './cfn-exec-policy';
 import { DEPLOY_ROLE_NAME, GITHUB_REPO, GITHUB_SUBJECT_PREFIX } from './config';
 
 const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
@@ -23,8 +24,12 @@ export type BootstrapStackProps = StackProps & {
 export class BootstrapStack extends Stack {
   readonly deployRole: iam.Role;
 
+  readonly cfnExecPolicy: iam.ManagedPolicy;
+
   constructor(scope: Construct, id: string, props: BootstrapStackProps) {
-    super(scope, id, props);
+    // Deployed with the owner's own credentials, not CDK's CloudFormation execution role: that role
+    // is scoped to the AppStack (#84), and this stack manages IAM, OIDC and the budget.
+    super(scope, id, { synthesizer: new CliCredentialsStackSynthesizer(), ...props });
     const repo = props.githubRepo ?? GITHUB_REPO;
 
     const providerArn =
@@ -87,6 +92,19 @@ export class BootstrapStack extends Stack {
       ],
     });
 
+    // #84 Given to CDK's CloudFormation execution role by a one-off re-bootstrap (README, Deploy).
+    this.cfnExecPolicy = new iam.ManagedPolicy(this, 'CfnExecPolicy', {
+      managedPolicyName: CFN_EXEC_POLICY_NAME,
+      description:
+        'What CloudFormation may do when CDK deploys LiveStaffingApp (instead of AdministratorAccess)',
+      statements: cfnExecPolicyStatements({
+        partition: this.partition,
+        account: this.account,
+        region: this.region,
+      }),
+    });
+
     new CfnOutput(this, 'DeployRoleArn', { value: this.deployRole.roleArn });
+    new CfnOutput(this, 'CfnExecPolicyArn', { value: this.cfnExecPolicy.managedPolicyArn });
   }
 }
